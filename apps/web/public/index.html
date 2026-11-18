@@ -24,6 +24,10 @@
           <span id="fileName">kona.yaml</span>
           <span id="status" class="status">Ready</span>
         </div>
+        <label class="file-picker">
+          <span>Load RTL workspace</span>
+          <input id="workspaceFiles" type="file" multiple webkitdirectory />
+        </label>
         <textarea id="manifest" spellcheck="false">project_name: counter
 top_module: counter
 rtl_files:
@@ -31,7 +35,7 @@ rtl_files:
 include_dirs:
   - rtl/include
 sim_mode: fast_2state
-testbench: tests/test_counter.py
+testbench: tests/test_counter.sv
 waveform_signals:
   - dut.clk
   - dut.rst_n
@@ -52,6 +56,6 @@ waveform_signals:
         </div>
       </section>
     </main>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/app.bundle.js"></script>
   </body>
 </html>

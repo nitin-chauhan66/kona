@@ -45,8 +45,14 @@ npm run dev
 ```
 
 Open `http://127.0.0.1:4173`. The cockpit provides an editor, lint/run/prove
-operation tabs, and structured diagnostics. It uses the local CLI; no RTL is
-uploaded to a server.
+operation tabs, and structured diagnostics. The browser bundle includes a
+WebAssembly Yosys lint engine and stores sessions locally; select the RTL
+workspace directory when using a static deployment. Native Docker/CLI execution
+remains available for Verilator, Icarus, and SymbiYosys run/prove operations.
+
+To build a static browser bundle, run `npm run build` and serve `apps/web/public`
+from any static file host. No Kona application server or RTL upload endpoint is
+required for browser linting.
 
 ## Phase 2 workspace integration
 
@@ -88,6 +94,18 @@ This is a packaged Linux-native deployment, not browser-WASM execution.
 `apps/desktop/src-tauri` contains the Tauri v2 desktop shell scaffold. Native
 Verilator/Icarus process integration remains delegated to the shared CLI runner
 until native IPC commands are installed.
+
+## macOS click setup
+
+Double-click [`scripts/setup-macos.command`](./scripts/setup-macos.command) to
+install the macOS prerequisites, native Verilator/Icarus/Yosys engines, Rust,
+and the Tauri CLI, then build `Kona.app` and a DMG. The script requires
+Homebrew and an internet connection for the one-time setup. The resulting
+artifacts are written to `apps/desktop/src-tauri/target/release/bundle`.
+
+The current desktop shell packages the browser cockpit. Native run/prove
+execution still uses the CLI/server integration; the macOS installer does not
+silently claim formal or simulation support when an engine is unavailable.
 
 The Phase 1 scaffold includes manifest contracts, a structured CLI runner, and
 a local web cockpit. Additional native desktop, WASM, and AI integrations can

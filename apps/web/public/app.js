@@ -1,14 +1,36 @@
+import { parseKonaManifest } from "@kona/compute-contract";
+import { Exit, runYosys, version as yosysVersion } from "@yowasp/yosys";
+
 const manifest = document.querySelector("#manifest");
 const results = document.querySelector("#results");
 const status = document.querySelector("#status");
 const runButton = document.querySelector("#runButton");
+const workspaceFiles = document.querySelector("#workspaceFiles");
 const operationButtons = [...document.querySelectorAll("[data-operation]")];
 let operation = "lint";
 let saveTimer;
 let saveSequence = 0;
+let runInProgress = false;
+let runSequence = 0;
+const localSessionKey = "kona-session";
+const selectedFiles = new Map();
 
 loadSession();
-loadToolchainStatus();
+setStatus(`Browser WASM ready (Yosys ${yosysVersion})`, "success");
+
+workspaceFiles.addEventListener("change", async () => {
+  selectedFiles.clear();
+  const paths = [...workspaceFiles.files].map((file) => file.webkitRelativePath || file.name);
+  const root = paths.length > 0 && paths.every((file) => file.includes("/"))
+    ? paths[0].split("/")[0]
+    : "";
+  for (const file of workspaceFiles.files) {
+    const path = (file.webkitRelativePath || file.name)
+      .replace(root ? `${root}/` : "", "");
+    selectedFiles.set(path, await file.text());
+  }
+  setStatus(`${selectedFiles.size} workspace files loaded`, "success");
+});
 
 manifest.addEventListener("input", () => {
   window.clearTimeout(saveTimer);
@@ -38,13 +60,23 @@ async function loadSession() {
     }
     setStatus("Session restored", "success");
   } catch {
-    setStatus("Session unavailable", "error");
-    setInitialResults();
+    const saved = readLocalSession();
+    if (saved) {
+      if (typeof saved.manifest === "string") manifest.value = saved.manifest;
+      if (["lint", "run", "prove"].includes(saved.operation)) selectOperation(saved.operation);
+      setStatus("Standalone session restored", "success");
+    } else {
+      setStatus("Standalone browser mode", "success");
+      setInitialResults();
+    }
   }
 }
 
 async function saveSession() {
   const sequence = ++saveSequence;
+  const startedRunSequence = runSequence;
+  const session = { manifest: manifest.value, operation };
+  localStorage.setItem(localSessionKey, JSON.stringify(session));
   try {
     const response = await fetch("/api/session", {
       method: "POST",
@@ -55,9 +87,13 @@ async function saveSession() {
       const payload = await readJson(response);
       throw new Error(typeof payload.error === "string" ? payload.error : "Save failed");
     }
-    if (sequence === saveSequence) setStatus("Session saved", "success");
+    if (sequence === saveSequence && startedRunSequence === runSequence && !runInProgress) {
+      setStatus("Session saved", "success");
+    }
   } catch (error) {
-    if (sequence === saveSequence) setStatus("Save failed", "error", error);
+    if (sequence === saveSequence && startedRunSequence === runSequence && !runInProgress) {
+      setStatus("Session saved locally", "success");
+    }
   }
 }
 
@@ -94,24 +130,22 @@ manifest.addEventListener("keydown", (event) => {
 });
 
 async function run() {
+  runSequence += 1;
+  runInProgress = true;
+  window.clearTimeout(saveTimer);
   runButton.disabled = true;
   runButton.textContent = "Running...";
   setStatus("Running", "loading");
   results.replaceChildren(makeMuted("Executing Kona…"));
 
   try {
-    const response = await fetch("/api/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operation, manifest: manifest.value }),
-    });
-    const payload = await readJson(response);
-    if (!response.ok && typeof payload.error === "string") {
-      throw new Error(payload.error);
+    const validation = parseKonaManifest(manifest.value);
+    if (!validation.ok || !validation.manifest) {
+      setStatus("Failed", "error");
+      renderDiagnostics(validation.errors);
+      return;
     }
-    if (!payload || typeof payload !== "object" || typeof payload.ok !== "boolean") {
-      throw new Error("The Kona CLI returned an invalid result");
-    }
+    const payload = await executeBrowserOrServer(validation.manifest);
     const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
     setStatus(payload.ok ? "Passed" : "Failed", payload.ok ? "success" : "error");
     renderDiagnostics(diagnostics);
@@ -122,8 +156,86 @@ async function run() {
     diagnostic.textContent = error instanceof Error ? error.message : String(error);
     results.replaceChildren(diagnostic);
   } finally {
+    runInProgress = false;
     runButton.disabled = false;
     runButton.textContent = `Run ${operation[0].toUpperCase()}${operation.slice(1)}`;
+  }
+
+  async function executeBrowserOrServer(projectManifest) {
+    try {
+      const response = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation, manifest: manifest.value }),
+      });
+      const payload = await readJson(response);
+      if (response.ok && payload && typeof payload.ok === "boolean") return payload;
+    } catch {
+      // Static deployments intentionally use the local WASM engine below.
+    }
+    if (operation === "lint") return runBrowserLint(projectManifest);
+    return {
+      ok: false,
+      diagnostics: [{
+        severity: "error",
+        message: `Standalone browser mode does not yet provide ${operation} execution. Use lint or the native Docker/CLI engine.`,
+      }],
+    };
+  }
+
+  async function runBrowserLint(projectManifest) {
+    const missing = projectManifest.rtl_files.filter((file) => !selectedFiles.has(file));
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        diagnostics: [{
+          severity: "error",
+          message: `Load the RTL workspace directory; missing ${missing.join(", ")}`,
+        }],
+      };
+    }
+    const tree = {};
+    for (const [file, source] of selectedFiles) {
+      let node = tree;
+      const parts = file.split("/").filter(Boolean);
+      for (const part of parts.slice(0, -1)) node = node[part] ||= {};
+      node[parts.at(-1)] = new TextEncoder().encode(source);
+    }
+    const output = [];
+    const errors = [];
+    const decode = new TextDecoder();
+    try {
+      await runYosys([
+        "-p",
+        `read_verilog -sv ${projectManifest.rtl_files.join(" ")}; hierarchy -check -top ${projectManifest.top_module}; proc; check`,
+      ], tree, {
+        stdout: (bytes) => { if (bytes) output.push(decode.decode(bytes)); },
+        stderr: (bytes) => { if (bytes) errors.push(decode.decode(bytes)); },
+      });
+      return {
+        ok: true,
+        diagnostics: [{ severity: "info", message: `Browser Yosys lint passed (${yosysVersion}).` }],
+      };
+    } catch (error) {
+      const message = errors.join("") || (error instanceof Exit ? `Yosys exited with code ${error.code}` : String(error));
+      return { ok: false, diagnostics: parseToolOutput(message) };
+    }
+  }
+
+  function parseToolOutput(output) {
+    return output.split(/\r?\n/).filter(Boolean).map((message) => ({
+      severity: /error/i.test(message) ? "error" : "warning",
+      message: message.replace(/\x1b\[[0-9;]*m/g, ""),
+    }));
+  }
+
+  function readLocalSession() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(localSessionKey) || "null");
+      return saved && typeof saved === "object" ? saved : null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -132,28 +244,6 @@ async function readJson(response) {
     return await response.json();
   } catch {
     return {};
-  }
-}
-
-async function loadToolchainStatus() {
-  try {
-    const response = await fetch("/api/toolchain");
-    if (!response.ok) return;
-    const payload = await readJson(response);
-    const tools = payload.tools || {};
-    const available = Object.entries(tools)
-      .filter(([, version]) => version !== "unavailable")
-      .map(([name]) => name);
-    const unavailable = Object.entries(tools)
-      .filter(([, version]) => version === "unavailable")
-      .map(([name]) => name);
-    if (available.length > 0) {
-      setStatus(`${available.length} EDA tools available`, "success");
-    } else if (unavailable.length > 0) {
-      setStatus("EDA tools unavailable", "error");
-    }
-  } catch {
-    // Toolchain status is supplemental; operation diagnostics remain authoritative.
   }
 }
 

@@ -7,7 +7,8 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && npm run build:web",
+    "build:web": "node apps/web/build.mjs",
     "typecheck": "tsc -b --pretty false",
     "test": "npm run build && node --test tests/*.test.mjs",
     "kona": "node apps/cli/dist/cli.js",
@@ -18,6 +19,10 @@
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "esbuild": "^0.25.11",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@yowasp/yosys": "^0.71.188-dev.1267"
   }
 }
