@@ -1,0 +1,12 @@
+project_name: counter
+top_module: counter
+rtl_files:
+  - rtl/counter.sv
+include_dirs:
+  - rtl/include
+sim_mode: fast_2state
+testbench: tests/test_counter.py
+waveform_signals:
+  - dut.clk
+  - dut.rst_n
+  - dut.count

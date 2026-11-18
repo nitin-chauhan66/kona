@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/kona-core"]
+resolver = "2"

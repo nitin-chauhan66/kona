@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kona.dev/schemas/kona.schema.json",
+  "title": "Kona project manifest",
+  "description": "Declarative project configuration consumed by the Kona GUI and CLI.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "project_name",
+    "top_module",
+    "rtl_files",
+    "sim_mode"
+  ],
+  "properties": {
+    "project_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable project name."
+    },
+    "top_module": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$",
+      "description": "Top-level Verilog/SystemVerilog module."
+    },
+    "rtl_files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "RTL paths relative to the manifest."
+    },
+    "include_dirs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Include search paths relative to the manifest."
+    },
+    "sim_mode": {
+      "type": "string",
+      "enum": [
+        "fast_2state",
+        "accurate_4state",
+        "formal"
+      ]
+    },
+    "testbench": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional cocotb, PyUVM, or HDL testbench entry point."
+    },
+    "waveform_signals": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Optional signal paths to include in generated waveforms."
+    }
+  }
+}
