@@ -113,6 +113,7 @@ async function handleSessionGet(response) {
     const restored = {
       manifest: typeof session.manifest === "string" ? session.manifest : "",
       operation: allowedOperations.has(session.operation) ? session.operation : "lint",
+      ...(session.waveform && typeof session.waveform === "object" ? { waveform: session.waveform } : {}),
     };
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(JSON.stringify(restored));
@@ -194,6 +195,7 @@ async function handleSessionPost(request, response) {
     JSON.stringify({
       manifest: typeof session.manifest === "string" ? session.manifest : "",
       operation,
+      ...(session.waveform && typeof session.waveform === "object" ? { waveform: session.waveform } : {}),
       updatedAt: new Date().toISOString(),
     }, null, 2) + "\n",
   );

@@ -14,6 +14,14 @@ await build({
   target: "es2022",
   external: ["node:fs/promises"],
 });
+await build({
+  entryPoints: [path.join(root, "packages/compute-contract/src/vcd.ts")],
+  bundle: true,
+  format: "esm",
+  outfile: path.join(publicDir, "vcd-parser.js"),
+  platform: "browser",
+  target: "es2022",
+});
 for (const wasm of ["yosys.core.wasm", "yosys.core2.wasm", "yosys.core3.wasm", "yosys.core4.wasm"]) {
   await cp(path.join(root, "node_modules/@yowasp/yosys/gen", wasm), path.join(publicDir, wasm));
 }

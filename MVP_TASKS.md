@@ -294,7 +294,7 @@ timestamps, signal/source metadata, cursor, zoom, grouping, and radix state.
 
 ### WAVE-02 — Add VCD parser worker
 
-**Status:** Blocked
+**Status:** Done
 
 **Scope:** Parse supported VCD output off the main thread.
 
@@ -304,9 +304,15 @@ timestamps, signal/source metadata, cursor, zoom, grouping, and radix state.
 - Malformed VCD returns actionable diagnostics.
 - Parsing large files does not block editor interaction.
 
+**Implementation:** Added a browser-safe VCD parser in the shared compute
+contract, a module worker in the web public assets, and a worker-backed parser
+hook with cancellation support. The parser handles scalar and vector changes,
+hierarchy and timescale metadata, and line-scoped diagnostics for malformed
+VCD. Focused tests cover valid changes and malformed headers/value streams.
+
 ### WAVE-03 — Add waveform signal viewer
 
-**Status:** Blocked
+**Status:** Done
 
 **Scope:** Add a minimal timeline viewer before Surfer integration.
 
@@ -315,3 +321,8 @@ timestamps, signal/source metadata, cursor, zoom, grouping, and radix state.
 - Signals can be selected and grouped.
 - Cursor and zoom state persist.
 - A selected transition can identify its signal and timestamp.
+
+**Implementation:** The web cockpit now includes a dedicated waveform pane,
+VCD file loading through `KonaWaveformParser`, scalar/vector timeline rendering,
+signal selection and grouping, cursor and zoom controls, radix selection, and
+localStorage/OPFS plus server session persistence.

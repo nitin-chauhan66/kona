@@ -1,6 +1,7 @@
 import type { WaveformArtifact } from "./waveform.js";
 
 export * from "./waveform.js";
+export * from "./vcd.js";
 
 export type ComputeTarget = "web-wasm" | "desktop-native" | "headless-cli";
 

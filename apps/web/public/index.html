@@ -17,7 +17,8 @@
     </header>
     <main class="workspace">
       <aside class="sidebar">
-        <span class="sidebar-label active" aria-current="page">Editor</span>
+        <button class="sidebar-label active" data-pane="editor" aria-current="page">Editor</button>
+        <button class="sidebar-label" data-pane="waveform">Wave</button>
       </aside>
       <section class="editor-pane">
         <div class="pane-header">
@@ -54,6 +55,50 @@ waveform_signals:
         </div>
         <div id="results" class="results">
           <p class="muted">Edit the project manifest, then run the selected operation.</p>
+        </div>
+      </section>
+      <section id="waveformPane" class="waveform-pane" hidden>
+        <div class="pane-header waveform-header">
+          <div>
+            <span>Waveform viewer</span>
+            <span id="waveArtifactName" class="muted-inline">No VCD loaded</span>
+          </div>
+          <label class="wave-load">
+            Load VCD
+            <input id="waveformFile" type="file" accept=".vcd,text/vnd.vcd,text/plain" />
+          </label>
+        </div>
+        <div class="wave-toolbar">
+          <button id="waveZoomOut" title="Zoom out">−</button>
+          <button id="waveZoomIn" title="Zoom in">+</button>
+          <button id="waveZoomReset">Reset zoom</button>
+          <select id="waveRadix" aria-label="Default signal radix">
+            <option value="binary">Binary</option>
+            <option value="hex">Hex</option>
+            <option value="octal">Octal</option>
+            <option value="decimal">Decimal</option>
+            <option value="signed">Signed</option>
+            <option value="unsigned">Unsigned</option>
+          </select>
+          <span id="waveCursor" class="wave-cursor">Cursor: —</span>
+        </div>
+        <div class="wave-content">
+          <aside class="wave-signals">
+            <div class="wave-section-title">
+              <span>Signals</span>
+              <button id="waveGroupSelected" title="Create a group from selected signals">Group</button>
+            </div>
+            <div id="waveSignalList"></div>
+            <div class="wave-section-title">Groups</div>
+            <div id="waveGroupList"></div>
+          </aside>
+          <div class="wave-timeline-wrap">
+            <div id="waveEmpty" class="wave-empty">
+              Load a VCD artifact. The host parser can provide it through
+              <code>window.KonaWaveformParser.parseVcd(file)</code>.
+            </div>
+            <svg id="waveTimeline" class="wave-timeline" role="application" aria-label="Waveform timeline" hidden></svg>
+          </div>
         </div>
       </section>
     </main>

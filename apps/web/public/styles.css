@@ -94,6 +94,69 @@ button { font: inherit; }
 .diagnostic.info { border-left-color: #67d391; }
 .muted { color: #7682a1; font-size: 13px; }
 
+.waveform-pane {
+  grid-column: 2 / 4;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0b1020;
+}
+.waveform-pane[hidden] { display: none; }
+.waveform-header > div { display: flex; flex-direction: column; gap: 2px; }
+.muted-inline { color: #7682a1; font-size: 10px; }
+.wave-load {
+  border-radius: 6px; padding: 6px 9px; background: #252d49;
+  color: #dce3f5; font-size: 11px; cursor: pointer;
+}
+.wave-load input { width: 1px; height: 1px; opacity: 0; position: absolute; }
+.wave-toolbar {
+  height: 40px; flex: none; display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-bottom: 1px solid #242d45;
+}
+.wave-toolbar button, .wave-toolbar select, .wave-section-title button {
+  border: 1px solid #303955; border-radius: 5px; background: #151c32;
+  color: #bfc9e3; padding: 5px 8px; font-size: 11px;
+}
+.wave-toolbar button { cursor: pointer; }
+.wave-cursor { margin-left: auto; color: #67d391; font-size: 11px; }
+.wave-content { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+.wave-signals {
+  min-height: 0; overflow: auto; border-right: 1px solid #242d45;
+  background: #0d1325; padding: 8px;
+}
+.wave-section-title {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 4px 0 6px; color: #8f9ab7; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.wave-signal {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) 64px;
+  align-items: center; gap: 4px; min-height: 30px;
+  border-bottom: 1px solid #171f35; font-size: 12px;
+}
+.wave-signal input { accent-color: #8b7cf6; }
+.wave-signal-name { overflow: hidden; text-overflow: ellipsis; }
+.wave-signal select {
+  min-width: 0; border: 0; background: #11172a; color: #8f9ab7;
+  font-size: 10px; padding: 3px;
+}
+.wave-group {
+  display: flex; align-items: center; gap: 6px; min-height: 28px;
+  color: #bfc9e3; font-size: 11px;
+}
+.wave-timeline-wrap { min-width: 0; min-height: 0; overflow: auto; }
+.wave-empty { display: grid; place-items: center; height: 100%; color: #7682a1; font-size: 12px; text-align: center; }
+.wave-empty code { color: #bfc9e3; }
+.wave-timeline { display: block; width: 100%; min-width: 520px; height: 100%; background: #0b1020; }
+.wave-row-name { fill: #adb7d2; font-size: 11px; }
+.wave-grid { stroke: #202943; stroke-width: 1; }
+.wave-time { fill: #7682a1; font-size: 10px; }
+.wave-low { stroke: #67d391; fill: #67d391; }
+.wave-high { stroke: #8b7cf6; fill: #8b7cf6; }
+.wave-x { stroke: #ef6b73; fill: #ef6b73; }
+.wave-vector { stroke: #e7b75e; fill: #e7b75e; }
+.wave-cursor-line { stroke: #dce3f5; stroke-width: 1.5; stroke-dasharray: 3 3; pointer-events: none; }
+
 @media (max-width: 760px) {
   body { overflow: auto; }
   .workspace {
