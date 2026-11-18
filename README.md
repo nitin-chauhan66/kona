@@ -9,6 +9,7 @@ Local-first RTL verification, formal checking, and waveform debugging.
 - `crates/kona-core` — Rust compute-engine contracts for Tauri and CLI
 - `schemas/kona.schema.json` — JSON Schema for `kona.yaml`
 - `examples/kona.yaml` — minimal project manifest
+- `MVP_TASKS.md` — scoped MVP task board with status and acceptance criteria
 - `REQUIREMENTS.md` — Software Requirements Specification v3.0
 
 ## Development
@@ -33,6 +34,10 @@ The CLI validates `kona.yaml`, invokes Verilator/Icarus/SymbiYosys when they are
 installed, and emits structured JSON with `--json`. Missing tools are reported
 clearly instead of silently producing a successful result.
 
+Manifest paths are relative to the manifest file. RTL and testbench files are
+checked before an EDA tool is started, and generated artifacts are written to
+the project `.kona/` directory.
+
 ## Local web cockpit
 
 ```bash
@@ -48,6 +53,37 @@ uploaded to a server.
 Use `npm run watch` to re-run lint whenever `kona.yaml` changes. VS Code users
 can run the included Kona lint, run, and watch tasks from the command palette.
 The web cockpit automatically restores and saves editor state in `.kona/session.json`.
+
+Watch mode also observes declared RTL inputs and include directories, debouncing
+short bursts of filesystem events before rerunning lint.
+
+## MVP scope
+
+The MVP provides a local manifest editor, structured CLI operations, optional
+Verilator/Icarus/SymbiYosys integration, session persistence, and workspace
+watching. The complete task board and acceptance criteria are in
+[MVP_TASKS.md](MVP_TASKS.md). Native Tauri execution, WebAssembly toolchains,
+protocol decoders, and AI assistance are planned after the MVP.
+
+## Packaged web app with EDA tools
+
+The local web container includes Yosys, Verilator, Icarus Verilog, and
+SymbiYosys. It keeps RTL in the local container/workspace and exposes tool
+availability through the cockpit.
+
+```bash
+npm run package:web
+npm run start:packaged
+```
+
+Then open `http://127.0.0.1:4173`. Alternatively:
+
+```bash
+docker compose up --build
+```
+
+The first container build downloads the open-source Debian toolchain packages.
+This is a packaged Linux-native deployment, not browser-WASM execution.
 
 `apps/desktop/src-tauri` contains the Tauri v2 desktop shell scaffold. Native
 Verilator/Icarus process integration remains delegated to the shared CLI runner

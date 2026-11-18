@@ -19,6 +19,7 @@
     },
     "top_module": {
       "type": "string",
+      "minLength": 1,
       "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$",
       "description": "Top-level Verilog/SystemVerilog module."
     },

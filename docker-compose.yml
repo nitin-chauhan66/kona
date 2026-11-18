@@ -1,0 +1,13 @@
+services:
+  kona-web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: kona-web:local
+    ports:
+      - "4173:4173"
+    volumes:
+      - kona-workspace:/opt/kona/.kona
+
+volumes:
+  kona-workspace:

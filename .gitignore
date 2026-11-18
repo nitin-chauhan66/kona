@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .kona/
+/.kona-web-manifest.yaml
 dist/
 target/
 .vayu/

@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { existsSync, watch as watchFile } from "node:fs";
 import { spawn } from "node:child_process";
-import { watch } from "node:fs";
 import path from "node:path";
 import {
   parseKonaManifest,
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const result = await executeOperation(operation, validation.manifest);
+  const result = await executeOperation(operation, validation.manifest, path.dirname(path.resolve(manifestArg)));
   emit(result);
   if (!result.ok) process.exitCode = 1;
 }
@@ -59,6 +59,7 @@ async function main(): Promise<void> {
 async function executeOperation(
   operation: string,
   manifest: ProjectManifest,
+  manifestDirectory = process.cwd(),
 ): Promise<ComputeResult & { lock?: Record<string, string> }> {
   if (!["lint", "run", "prove"].includes(operation)) {
     return failure(operation, [{
@@ -67,12 +68,37 @@ async function executeOperation(
     }]);
   }
 
-  await mkdir(".kona", { recursive: true });
-  const workspaceRoot = process.cwd();
+  const outputDirectory = path.join(manifestDirectory, ".kona");
+  await mkdir(outputDirectory, { recursive: true });
+  const workspaceRoot = manifestDirectory;
   const rtlFiles = manifest.rtl_files.map((file) => path.resolve(workspaceRoot, file));
+  const testbench = manifest.testbench
+    ? path.resolve(workspaceRoot, manifest.testbench)
+    : undefined;
+  let simulationTop = manifest.top_module;
+  if (testbench) {
+    try {
+      simulationTop = await inferTopModule(testbench, manifest.top_module);
+    } catch (error) {
+      return failure(operation, [{
+        severity: "error",
+        message: `Unable to read testbench: ${String(error)}`,
+        file: testbench,
+      }]);
+    }
+  }
   const includeArgs = (manifest.include_dirs ?? []).flatMap((dir) => [
-    "-I", path.resolve(workspaceRoot, dir),
+    `-I${path.resolve(workspaceRoot, dir)}`,
   ]);
+  const missingInputs = [...rtlFiles, ...(testbench ? [testbench] : [])]
+    .filter((file) => !existsSync(file));
+  if (missingInputs.length > 0) {
+    return failure(operation, missingInputs.map((file) => ({
+      severity: "error" as const,
+      message: `Declared input file not found: ${path.relative(workspaceRoot, file)}`,
+      file,
+    })));
+  }
 
   if (operation === "lint") {
     const unavailable = await commandAvailable("verilator");
@@ -97,9 +123,10 @@ async function executeOperation(
           message: "Icarus Verilog is unavailable; accurate 4-state simulation was not run.",
         }], manifest);
       }
-      const output = path.resolve(".kona", `${manifest.top_module}.vvp`);
+      const output = path.join(outputDirectory, `${manifest.top_module}.vvp`);
       const compile = await runCommand("iverilog", [
-        "-g2012", "-s", manifest.top_module, "-o", output, ...includeArgs, ...rtlFiles,
+        "-g2012", "-s", simulationTop, "-o", output, ...includeArgs,
+        ...rtlFiles, ...(testbench ? [testbench] : []),
       ]);
       if (!compile.ok) return toolResult(operation, compile, manifest);
       const run = await runCommand("vvp", [output]);
@@ -113,15 +140,21 @@ async function executeOperation(
         message: "Verilator is unavailable; fast 2-state simulation was not run.",
       }], manifest);
     }
-    const buildDir = path.resolve(".kona", "verilator");
+    const buildDir = path.join(outputDirectory, "verilator");
     const compile = await runCommand("verilator", [
-      "--binary", "--timing", "--top-module", manifest.top_module,
-      "--Mdir", buildDir, ...includeArgs, ...rtlFiles,
+      "--binary", "--timing", "--top-module", simulationTop,
+      "--Mdir", buildDir, ...includeArgs, ...rtlFiles, ...(testbench ? [testbench] : []),
     ]);
     if (!compile.ok) return toolResult(operation, compile, manifest);
-    const executable = path.join(buildDir, `V${manifest.top_module}`);
+    const executable = path.join(buildDir, `V${simulationTop}`);
     const run = await runCommand(executable, []);
     return toolResult(operation, run, manifest);
+  }
+
+  async function inferTopModule(testbenchPath: string, fallback: string): Promise<string> {
+    const source = await readFile(testbenchPath, "utf8");
+    const match = /^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b/m.exec(source);
+    return match?.[1] ?? fallback;
   }
 
   const available = await commandAvailable("sby");
@@ -216,7 +249,10 @@ async function runCommand(command: string, args: string[]): Promise<CommandResul
 }
 
 async function commandAvailable(command: string): Promise<boolean> {
-  const result = await runCommand(command, ["--version"]);
+  const probeArgs = command === "iverilog" ? ["-V"]
+    : command === "sby" ? ["--help"]
+    : ["--version"];
+  const result = await runCommand(command, probeArgs);
   return result.code !== 127;
 }
 
@@ -224,7 +260,10 @@ async function generateLock(): Promise<Record<string, string>> {
   const tools = ["yosys", "verilator", "iverilog", "sby"];
   const lock: Record<string, string> = {};
   for (const tool of tools) {
-    const result = await runCommand(tool, ["--version"]);
+    const probeArgs = tool === "iverilog" ? ["-V"]
+      : tool === "sby" ? ["--help"]
+      : ["--version"];
+    const result = await runCommand(tool, probeArgs);
     lock[tool] = result.code === 127
       ? "unavailable"
       : (result.stdout || result.stderr).trim().split(/\r?\n/)[0] || "unknown";
@@ -251,6 +290,7 @@ function emit(payload: unknown): void {
 
 async function watchManifest(manifestPath: string): Promise<void> {
   let running = false;
+  let timer: NodeJS.Timeout | undefined;
   console.log(`Watching ${manifestPath} for changes...`);
 
   const run = async () => {
@@ -277,9 +317,29 @@ async function watchManifest(manifestPath: string): Promise<void> {
   };
 
   await run();
-  watch(manifestPath, { persistent: true }, () => {
-    void run();
-  });
+  const watchers = new Set<ReturnType<typeof watchFile>>();
+  const schedule = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => void run(), 150);
+  };
+  const watchPath = (file: string) => {
+    if (!existsSync(file)) return;
+    watchers.add(watchFile(file, { persistent: true }, schedule));
+  };
+  watchPath(path.resolve(manifestPath));
+  try {
+    const source = await readFile(manifestPath, "utf8");
+    const validation = parseKonaManifest(source);
+    if (validation.ok && validation.manifest) {
+      const base = path.dirname(path.resolve(manifestPath));
+      for (const file of validation.manifest.rtl_files) watchPath(path.resolve(base, file));
+      for (const directory of validation.manifest.include_dirs ?? []) {
+        watchPath(path.resolve(base, directory));
+      }
+    }
+  } catch {
+    // The initial run reports manifest read/parse errors.
+  }
 }
 
 function printHelp(): void {

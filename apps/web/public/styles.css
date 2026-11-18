@@ -28,6 +28,7 @@ button { font: inherit; }
   background: #8b7cf6; color: white; font-weight: 700; cursor: pointer;
 }
 .run-button:hover { background: #9d91fb; }
+.run-button:disabled { cursor: wait; opacity: .65; }
 
 .workspace {
   height: calc(100vh - 56px);
@@ -38,11 +39,12 @@ button { font: inherit; }
   display: flex; flex-direction: column; align-items: stretch;
   border-right: 1px solid #242d45; background: #0d1325;
 }
-.sidebar button {
+.sidebar button, .sidebar-label {
+  display: grid; place-items: center;
   height: 64px; border: 0; border-right: 2px solid transparent;
   background: transparent; color: #7f8aa8; font-size: 11px; cursor: pointer;
 }
-.sidebar button.active { color: #c8cfee; border-right-color: #8b7cf6; background: #151c32; }
+.sidebar button.active, .sidebar-label.active { color: #c8cfee; border-right-color: #8b7cf6; background: #151c32; }
 
 .editor-pane, .results-pane { min-width: 0; display: flex; flex-direction: column; }
 .editor-pane { border-right: 1px solid #242d45; }
@@ -52,7 +54,11 @@ button { font: inherit; }
   border-bottom: 1px solid #242d45; background: #11172a;
   color: #adb7d2; font-size: 12px;
 }
-.status { color: #67d391; }
+.status { color: #adb7d2; }
+.status[data-state="loading"] { color: #e7b75e; }
+.status[data-state="success"] { color: #67d391; }
+.status[data-state="error"] { color: #ef6b73; }
+.status[data-state="ready"] { color: #adb7d2; }
 
 #manifest {
   flex: 1; resize: none; border: 0; outline: none;
@@ -79,7 +85,17 @@ button { font: inherit; }
 .muted { color: #7682a1; font-size: 13px; }
 
 @media (max-width: 760px) {
-  .workspace { grid-template-columns: 48px 1fr; }
-  .sidebar button { height: 52px; font-size: 9px; }
-  .results-pane { display: none; }
+  body { overflow: auto; }
+  .workspace {
+    height: auto;
+    min-height: calc(100vh - 56px);
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+  .sidebar-label { height: 52px; font-size: 9px; }
+  .editor-pane { min-height: 420px; border-right: 0; }
+  .results-pane {
+    grid-column: 2;
+    min-height: 240px;
+    border-top: 1px solid #242d45;
+  }
 }

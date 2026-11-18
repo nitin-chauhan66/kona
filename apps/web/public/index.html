@@ -13,13 +13,11 @@
         <span class="mark">K</span>
         <span>Kona</span>
       </div>
-      <button id="runButton" class="run-button">Run</button>
+      <button id="runButton" class="run-button" aria-label="Run lint operation">Run Lint</button>
     </header>
     <main class="workspace">
       <aside class="sidebar">
-        <button class="active">Explorer</button>
-        <button>Waveforms</button>
-        <button>Formal</button>
+        <span class="sidebar-label active" aria-current="page">Editor</span>
       </aside>
       <section class="editor-pane">
         <div class="pane-header">
@@ -44,9 +42,9 @@ waveform_signals:
         <div class="pane-header">
           <span>Diagnostics</span>
           <div class="operation-tabs">
-            <button data-operation="lint" class="active">Lint</button>
-            <button data-operation="run">Run</button>
-            <button data-operation="prove">Prove</button>
+            <button data-operation="lint" class="active" aria-pressed="true">Lint</button>
+            <button data-operation="run" aria-pressed="false">Run</button>
+            <button data-operation="prove" aria-pressed="false">Prove</button>
           </div>
         </div>
         <div id="results" class="results">

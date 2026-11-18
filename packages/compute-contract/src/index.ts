@@ -75,12 +75,24 @@ export function parseKonaManifest(source: string): ManifestValidation {
   let raw: Record<string, unknown>;
 
   try {
-    raw = JSON.parse(source) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(source);
+    raw = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
   } catch {
     raw = parseSimpleYaml(source);
   }
 
   const errors: Diagnostic[] = [];
+  const knownKeys = new Set([
+    "project_name", "top_module", "rtl_files", "include_dirs",
+    "sim_mode", "testbench", "waveform_signals",
+  ]);
+  for (const key of Object.keys(raw)) {
+    if (!knownKeys.has(key)) {
+      errors.push({ severity: "error", message: `Unknown manifest field: ${key}` });
+    }
+  }
   const requiredStrings = ["project_name", "top_module"] as const;
   for (const key of requiredStrings) {
     if (typeof raw[key] !== "string" || raw[key].trim() === "") {
@@ -89,14 +101,29 @@ export function parseKonaManifest(source: string): ManifestValidation {
   }
 
   if (!Array.isArray(raw.rtl_files) || raw.rtl_files.length === 0 ||
-      raw.rtl_files.some((value) => typeof value !== "string")) {
-    errors.push({ severity: "error", message: "rtl_files must contain at least one file path" });
+      raw.rtl_files.some((value) => typeof value !== "string" || value.trim() === "")) {
+    errors.push({ severity: "error", message: "rtl_files must contain at least one non-empty file path" });
+  }
+  if (typeof raw.top_module === "string" &&
+      !/^[A-Za-z_][A-Za-z0-9_$]*$/.test(raw.top_module)) {
+    errors.push({ severity: "error", message: "top_module must be a valid Verilog identifier" });
   }
   if (typeof raw.sim_mode !== "string" || !isSimulationMode(raw.sim_mode)) {
     errors.push({
       severity: "error",
       message: "sim_mode must be fast_2state, accurate_4state, or formal",
     });
+  }
+
+  for (const key of ["include_dirs", "waveform_signals"] as const) {
+    if (raw[key] !== undefined && (!Array.isArray(raw[key]) ||
+        raw[key].some((value) => typeof value !== "string" || value.trim() === ""))) {
+      errors.push({ severity: "error", message: `${key} must contain only non-empty strings` });
+    }
+  }
+  if (raw.testbench !== undefined &&
+      (typeof raw.testbench !== "string" || raw.testbench.trim() === "")) {
+    errors.push({ severity: "error", message: "testbench must be a non-empty string" });
   }
 
   if (errors.length > 0) return { ok: false, errors };
