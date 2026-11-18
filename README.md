@@ -52,7 +52,13 @@ remains available for Verilator, Icarus, and SymbiYosys run/prove operations.
 
 To build a static browser bundle, run `npm run build` and serve `apps/web/public`
 from any static file host. No Kona application server or RTL upload endpoint is
-required for browser linting.
+required for browser linting. The browser stores the selected workspace in
+OPFS when supported, so reloads do not require reselecting RTL files.
+
+The standalone web mode currently supports real Yosys WebAssembly linting.
+Verilator 2-state simulation, Icarus 4-state simulation, and SymbiYosys proof
+remain native operations and are used automatically when the local server or
+desktop runtime is connected.
 
 ## Phase 2 workspace integration
 
@@ -100,8 +106,23 @@ until native IPC commands are installed.
 Double-click [`scripts/setup-macos.command`](./scripts/setup-macos.command) to
 install the macOS prerequisites, native Verilator/Icarus/Yosys engines, Rust,
 and the Tauri CLI, then build `Kona.app` and a DMG. The script requires
-Homebrew and an internet connection for the one-time setup. The resulting
-artifacts are written to `apps/desktop/src-tauri/target/release/bundle`.
+Xcode Command Line Tools, Homebrew, and an internet connection for the
+one-time setup. It exits with instructions if Xcode or Homebrew is missing.
+
+The resulting artifacts are written to:
+
+- `apps/desktop/src-tauri/target/release/bundle/macos/Kona.app`
+- `apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg`
+
+DMG filenames include the host architecture and may vary by macOS target.
+
+For a manual build from the repository root:
+
+```bash
+npm ci
+npm run build
+npm --workspace apps/desktop run build
+```
 
 The current desktop shell packages the browser cockpit. Native run/prove
 execution still uses the CLI/server integration; the macOS installer does not

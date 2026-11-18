@@ -6,6 +6,7 @@ const results = document.querySelector("#results");
 const status = document.querySelector("#status");
 const runButton = document.querySelector("#runButton");
 const workspaceFiles = document.querySelector("#workspaceFiles");
+const capability = document.querySelector("#capability");
 const operationButtons = [...document.querySelectorAll("[data-operation]")];
 let operation = "lint";
 let saveTimer;
@@ -17,6 +18,7 @@ const selectedFiles = new Map();
 
 loadSession();
 setStatus(`Browser WASM ready (Yosys ${yosysVersion})`, "success");
+restoreWorkspace();
 
 workspaceFiles.addEventListener("change", async () => {
   selectedFiles.clear();
@@ -29,6 +31,7 @@ workspaceFiles.addEventListener("change", async () => {
       .replace(root ? `${root}/` : "", "");
     selectedFiles.set(path, await file.text());
   }
+  await persistWorkspace();
   setStatus(`${selectedFiles.size} workspace files loaded`, "success");
 });
 
@@ -43,8 +46,7 @@ async function loadSession() {
   try {
     const response = await fetch("/api/session");
     if (response.status === 404) {
-      setStatus("Ready", "ready");
-      setInitialResults();
+      restoreLocalSession();
       return;
     }
     if (!response.ok) {
@@ -59,17 +61,25 @@ async function loadSession() {
       selectOperation(session.operation);
     }
     setStatus("Session restored", "success");
+    await restoreWorkspace();
+    await updateCapabilities();
   } catch {
-    const saved = readLocalSession();
-    if (saved) {
-      if (typeof saved.manifest === "string") manifest.value = saved.manifest;
-      if (["lint", "run", "prove"].includes(saved.operation)) selectOperation(saved.operation);
-      setStatus("Standalone session restored", "success");
-    } else {
-      setStatus("Standalone browser mode", "success");
-      setInitialResults();
-    }
+    restoreLocalSession();
   }
+}
+
+function restoreLocalSession() {
+  const saved = readLocalSession();
+  if (saved) {
+    if (typeof saved.manifest === "string") manifest.value = saved.manifest;
+    if (["lint", "run", "prove"].includes(saved.operation)) selectOperation(saved.operation);
+    setStatus("Standalone session restored", "success");
+  } else {
+    setStatus("Standalone browser mode", "success");
+    setInitialResults();
+  }
+  updateCapabilities();
+  restoreWorkspace();
 }
 
 async function saveSession() {
@@ -87,6 +97,7 @@ async function saveSession() {
       const payload = await readJson(response);
       throw new Error(typeof payload.error === "string" ? payload.error : "Save failed");
     }
+
     if (sequence === saveSequence && startedRunSequence === runSequence && !runInProgress) {
       setStatus("Session saved", "success");
     }
@@ -94,6 +105,23 @@ async function saveSession() {
     if (sequence === saveSequence && startedRunSequence === runSequence && !runInProgress) {
       setStatus("Session saved locally", "success");
     }
+  }
+}
+
+async function updateCapabilities() {
+  try {
+    const response = await fetch("/api/toolchain");
+    if (!response.ok) throw new Error("Native toolchain unavailable");
+    const payload = await readJson(response);
+    const tools = payload.tools || {};
+    const available = Object.entries(tools)
+      .filter(([, version]) => version !== "unavailable")
+      .map(([name]) => name);
+    capability.textContent = available.length > 0
+      ? `Native mode connected: ${available.join(", ")}. Browser WASM lint is also available.`
+      : "Browser mode: Yosys WASM lint is available. Run and Prove use native engines when connected.";
+  } catch {
+    capability.textContent = "Standalone browser mode: Yosys WASM lint is available. Run and Prove require the native app or CLI.";
   }
 }
 
@@ -205,9 +233,12 @@ async function run() {
     const errors = [];
     const decode = new TextDecoder();
     try {
+      const includeArgs = (projectManifest.include_dirs ?? [])
+        .map((directory) => `-I${directory}`)
+        .join(" ");
       await runYosys([
         "-p",
-        `read_verilog -sv ${projectManifest.rtl_files.join(" ")}; hierarchy -check -top ${projectManifest.top_module}; proc; check`,
+        `read_verilog -sv ${includeArgs} ${projectManifest.rtl_files.join(" ")}; hierarchy -check -top ${projectManifest.top_module}; proc; check`,
       ], tree, {
         stdout: (bytes) => { if (bytes) output.push(decode.decode(bytes)); },
         stderr: (bytes) => { if (bytes) errors.push(decode.decode(bytes)); },
@@ -229,14 +260,6 @@ async function run() {
     }));
   }
 
-  function readLocalSession() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(localSessionKey) || "null");
-      return saved && typeof saved === "object" ? saved : null;
-    } catch {
-      return null;
-    }
-  }
 }
 
 async function readJson(response) {
@@ -244,6 +267,55 @@ async function readJson(response) {
     return await response.json();
   } catch {
     return {};
+  }
+}
+
+function readLocalSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(localSessionKey) || "null");
+    return saved && typeof saved === "object" ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+async function persistWorkspace() {
+  if (!navigator.storage?.getDirectory) return;
+  const root = await navigator.storage.getDirectory();
+  const workspace = await root.getDirectoryHandle("kona-workspace", { create: true });
+  for (const [file, source] of selectedFiles) {
+    let directory = workspace;
+    const parts = file.split("/").filter(Boolean);
+    for (const part of parts.slice(0, -1)) {
+      directory = await directory.getDirectoryHandle(part, { create: true });
+    }
+    const handle = await directory.getFileHandle(parts.at(-1), { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(source);
+    await writable.close();
+  }
+}
+
+async function restoreWorkspace() {
+  if (!navigator.storage?.getDirectory) return;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const workspace = await root.getDirectoryHandle("kona-workspace");
+    await readWorkspaceDirectory(workspace, "");
+    if (selectedFiles.size > 0) setStatus(`${selectedFiles.size} workspace files restored`, "success");
+  } catch {
+    // A workspace is optional; the file picker remains available.
+  }
+}
+
+async function readWorkspaceDirectory(directory, prefix) {
+  for await (const [name, handle] of directory.entries()) {
+    const path = prefix ? `${prefix}/${name}` : name;
+    if (handle.kind === "directory") {
+      await readWorkspaceDirectory(handle, path);
+    } else {
+      selectedFiles.set(path, await (await handle.getFile()).text());
+    }
   }
 }
 

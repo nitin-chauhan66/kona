@@ -1,8 +1,9 @@
 # Kona MVP Task Plan
 
-This plan scopes the MVP to the local-first Phase 1 runner and web cockpit.
-Desktop-native execution, WASM engines, protocol decoders, formal counterexample
-UX, and AI assistance remain follow-up work.
+This plan tracks the completed local-first MVP and the next implementation
+phase. Native desktop execution, browser simulation, waveform debugging,
+protocol decoders, formal counterexample UX, and AI assistance are separate
+follow-up workstreams.
 
 ## Status legend
 
@@ -23,9 +24,24 @@ UX, and AI assistance remain follow-up work.
 | MVP-06 | Add workspace watch integration | Done | MVP-02 |
 | MVP-07 | Add MVP CI validation | Done | MVP-02, MVP-03, MVP-05 |
 | MVP-08 | Document MVP workflows | Done | MVP-07 |
+| WEB-01 | Make static browser mode reliable | Done | MVP-04, MVP-05 |
+| WEB-02 | Add browser Yosys WASM lint | Done | WEB-01 |
+| WEB-03 | Persist browser workspace in OPFS | Done | WEB-01 |
+| WEB-04 | Document web capability boundaries | Done | WEB-02, WEB-03 |
+| DESKTOP-01 | Package macOS Tauri app | In progress | MVP-04 |
+| DESKTOP-02 | Add native engine discovery | Ready | DESKTOP-01 |
+| DESKTOP-03 | Add native operation IPC | Blocked | DESKTOP-02 |
+| DESKTOP-04 | Add macOS smoke-test workflow | Ready | DESKTOP-03 |
+| SIM-01 | Define browser simulation contract | Done | WEB-02 |
+| SIM-02 | Integrate Verilator WASM worker | Blocked | SIM-01 |
+| SIM-03 | Add browser run diagnostics | Blocked | SIM-02 |
+| WAVE-01 | Define waveform artifact contract | Done | MVP-02 |
+| WAVE-02 | Add VCD parser worker | Blocked | WAVE-01 |
+| WAVE-03 | Add waveform signal viewer | Blocked | WAVE-02 |
 
-MVP-01 and MVP-03 are the first parallel workstream opportunities after the
-manifest contract is agreed. MVP-04 and MVP-06 can then proceed independently.
+The MVP workstream is complete. The next parallel workstreams are desktop
+packaging (DESKTOP-01), browser simulation contracts (SIM-01), and waveform
+artifact design (WAVE-01).
 
 ## Focused task definitions
 
@@ -121,3 +137,181 @@ sample project, web API, and watch behavior.
 - Tool availability and warning/error behavior are documented.
 - Web cockpit and watch workflows are documented.
 - Phase 2+ exclusions are clearly separated from MVP capabilities.
+
+## Next phase task definitions
+
+### WEB-01 — Make static browser mode reliable
+
+**Status:** Done
+
+**Acceptance criteria:**
+
+- Static hosting works without `/api/session`, `/api/toolchain`, or `/api/run`.
+- Browser mode reports its capabilities without claiming native engines.
+- A selected RTL workspace can be loaded and reused after reload.
+
+### WEB-02 — Add browser Yosys WASM lint
+
+**Status:** Done
+
+**Acceptance criteria:**
+
+- The build generates the browser bundle and Yosys WASM assets locally.
+- Yosys runs against selected RTL files in the browser.
+- Include directories and top-module diagnostics are preserved.
+
+### WEB-03 — Persist browser workspace in OPFS
+
+**Status:** Done
+
+**Acceptance criteria:**
+
+- Selected RTL sources are stored under a Kona OPFS workspace.
+- Reload restores the workspace when OPFS is available.
+- The file picker remains available when OPFS is unsupported.
+
+### WEB-04 — Document web capability boundaries
+
+**Status:** Done
+
+**Acceptance criteria:**
+
+- Static browser lint support is documented.
+- Native-only run/prove behavior is documented.
+- Unsupported SRS features are not presented as implemented.
+
+### DESKTOP-01 — Package macOS Tauri app
+
+**Status:** In progress
+
+**Scope:** Make the Tauri shell build a clickable `.app` and DMG using the
+existing browser cockpit and macOS setup script.
+
+**Acceptance criteria:**
+
+- `scripts/setup-macos.command` installs prerequisites or gives actionable
+  instructions.
+- Tauri build hooks run from the repository root.
+- A macOS `.app` and DMG are produced in the documented bundle directory.
+
+### DESKTOP-02 — Add native engine discovery
+
+**Status:** Ready
+
+**Scope:** Add a desktop capability command that reports Verilator, Icarus,
+Yosys, and SymbiYosys versions and executable paths.
+
+**Acceptance criteria:**
+
+- Discovery runs without blocking the UI.
+- Missing engines are reported individually.
+- Results use the shared structured diagnostic contract.
+
+### DESKTOP-03 — Add native operation IPC
+
+**Status:** Blocked
+
+**Scope:** Expose lint, run, and prove through Tauri commands backed by the
+existing CLI runner.
+
+**Acceptance criteria:**
+
+- The desktop UI can execute operations without a local HTTP server.
+- Manifest and workspace paths are validated before process launch.
+- Process failures and cancellation return structured diagnostics.
+
+### DESKTOP-04 — Add macOS smoke-test workflow
+
+**Status:** Ready
+
+**Scope:** Validate the packaged app on supported Intel and Apple Silicon
+macOS runners.
+
+**Acceptance criteria:**
+
+- The app opens from a clean installation.
+- The counter sample passes lint and simulation.
+- Missing-engine behavior is visible and actionable.
+
+### SIM-01 — Define browser simulation contract
+
+**Status:** Done
+
+**Scope:** Extend `IComputeEngine` metadata for browser simulation limits,
+artifacts, cancellation, and memory/design-size thresholds.
+
+**Acceptance criteria:**
+
+- Supported browser modes and limits are explicit.
+- Results can carry diagnostics and waveform artifacts.
+- Abort behavior is testable without a native process.
+
+**Implementation:** Shared request metadata now supports request IDs, timeouts,
+cancellation reasons, browser capability declarations, design-size limits, and
+memory limits.
+
+### SIM-02 — Integrate Verilator WASM worker
+
+**Status:** Blocked
+
+**Scope:** Run supported 2-state unit simulations in a Web Worker without
+freezing the editor.
+
+**Acceptance criteria:**
+
+- Worker startup and progress are reported.
+- RTL/testbench inputs remain local to the browser.
+- A passing and failing sample produce structured results.
+
+### SIM-03 — Add browser run diagnostics
+
+**Status:** Blocked
+
+**Scope:** Render simulation output, source locations, runtime failures, and
+resource-limit guidance in the web cockpit.
+
+**Acceptance criteria:**
+
+- Compile and runtime diagnostics are distinguishable.
+- Failed simulations never appear as successful results.
+- Designs exceeding browser limits receive a desktop handoff message.
+
+### WAVE-01 — Define waveform artifact contract
+
+**Status:** Done
+
+**Scope:** Specify browser-safe VCD/FST metadata and session persistence before
+adding a viewer.
+
+**Acceptance criteria:**
+
+- Artifact format, signal names, timestamps, and source references are typed.
+- Session state includes cursor, zoom, grouping, and radix.
+- The contract is compatible with native CLI results.
+
+**Implementation:** Shared types and validators now cover VCD/FST artifacts,
+timestamps, signal/source metadata, cursor, zoom, grouping, and radix state.
+
+### WAVE-02 — Add VCD parser worker
+
+**Status:** Blocked
+
+**Scope:** Parse supported VCD output off the main thread.
+
+**Acceptance criteria:**
+
+- Parser handles scalar and vector value changes.
+- Malformed VCD returns actionable diagnostics.
+- Parsing large files does not block editor interaction.
+
+### WAVE-03 — Add waveform signal viewer
+
+**Status:** Blocked
+
+**Scope:** Add a minimal timeline viewer before Surfer integration.
+
+**Acceptance criteria:**
+
+- Signals can be selected and grouped.
+- Cursor and zoom state persist.
+- A selected transition can identify its signal and timestamp.

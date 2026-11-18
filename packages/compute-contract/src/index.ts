@@ -1,8 +1,27 @@
+import type { WaveformArtifact } from "./waveform.js";
+
+export * from "./waveform.js";
+
 export type ComputeTarget = "web-wasm" | "desktop-native" | "headless-cli";
 
 export type SimulationMode = "fast_2state" | "accurate_4state" | "formal";
 
 export type ComputeOperation = "lint" | "run" | "prove";
+
+export type ComputeCancellationReason =
+  | "user"
+  | "superseded"
+  | "timeout"
+  | "resource_limit";
+
+export interface ComputeRequestMetadata {
+  request_id?: string;
+  timeout_ms?: number;
+  cancellation?: {
+    requested: boolean;
+    reason?: ComputeCancellationReason;
+  };
+}
 
 export interface ProjectManifest {
   project_name: string;
@@ -21,12 +40,39 @@ export interface ToolchainVersions {
   symbiyosys?: string;
 }
 
+export interface DesignSizeLimits {
+  max_rtl_files?: number;
+  max_rtl_bytes?: number;
+  max_design_gates?: number;
+  max_simulation_steps?: number;
+}
+
+export interface MemoryLimits {
+  max_memory_bytes?: number;
+  max_waveform_bytes?: number;
+}
+
+export interface BrowserSimulationLimits {
+  design_size: DesignSizeLimits;
+  memory: MemoryLimits;
+  max_execution_time_ms?: number;
+}
+
+export interface BrowserSimulationCapabilities {
+  supported_modes: readonly SimulationMode[];
+  supports_waveforms: boolean;
+  supports_counterexamples: boolean;
+  supports_cancellation: boolean;
+  limits: BrowserSimulationLimits;
+}
+
 export interface ComputeRequest {
   operation: ComputeOperation;
   manifest: ProjectManifest;
   toolchain?: ToolchainVersions;
   signal_names?: string[];
   workspace_root?: string;
+  metadata?: ComputeRequestMetadata;
 }
 
 export interface Diagnostic {
@@ -37,10 +83,11 @@ export interface Diagnostic {
   column?: number;
 }
 
-export interface WaveformArtifact {
-  path: string;
-  format: "vcd" | "fst";
-  duration_fs?: number;
+export interface ArtifactMetadata {
+  artifact_id?: string;
+  byte_size?: number;
+  created_at?: string;
+  content_type?: string;
 }
 
 export interface ComputeResult {
@@ -56,6 +103,7 @@ export interface ComputeResult {
 export interface IComputeEngine {
   readonly target: ComputeTarget;
   readonly supportedModes: readonly SimulationMode[];
+  readonly capabilities?: BrowserSimulationCapabilities;
   execute(request: ComputeRequest, signal?: AbortSignal): Promise<ComputeResult>;
 }
 

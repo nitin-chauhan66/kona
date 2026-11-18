@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "dev.kona.desktop",
   "build": {
-    "beforeDevCommand": "npm --prefix ../.. run dev",
-    "beforeBuildCommand": "npm --prefix ../.. run build",
+    "beforeDevCommand": "cd ../.. && npm run dev",
+    "beforeBuildCommand": "cd ../.. && npm run build",
     "devUrl": "http://127.0.0.1:4173",
     "frontendDist": "../../web/public"
   },
