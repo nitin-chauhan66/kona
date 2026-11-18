@@ -10,6 +10,14 @@ const port = Number(process.env.PORT || 4173);
 
 const server = http.createServer(async (request, response) => {
   try {
+    if (request.method === "GET" && request.url === "/api/session") {
+      await handleSessionGet(response);
+      return;
+    }
+    if (request.method === "POST" && request.url === "/api/session") {
+      await handleSessionPost(request, response);
+      return;
+    }
     if (request.method === "POST" && request.url === "/api/run") {
       await handleRun(request, response);
       return;
@@ -38,9 +46,41 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-async function handleRun(request, response) {
+async function readRequestBody(request) {
   let body = "";
   for await (const chunk of request) body += chunk;
+  return body;
+}
+
+async function handleSessionGet(response) {
+  try {
+    const session = await readFile(path.join(workspace, ".kona", "session.json"), "utf8");
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(session);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      response.writeHead(404, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: "No saved session" }));
+      return;
+    }
+    throw error;
+  }
+}
+
+async function handleSessionPost(request, response) {
+  const body = await readRequestBody(request);
+  const session = JSON.parse(body);
+  await mkdir(path.join(workspace, ".kona"), { recursive: true });
+  await writeFile(
+    path.join(workspace, ".kona", "session.json"),
+    JSON.stringify({ ...session, updatedAt: new Date().toISOString() }, null, 2) + "\n",
+  );
+  response.writeHead(200, { "Content-Type": "application/json" });
+  response.end(JSON.stringify({ ok: true }));
+}
+
+async function handleRun(request, response) {
+  const body = await readRequestBody(request);
   const { operation = "lint", manifest } = JSON.parse(body);
   if (!["lint", "run", "prove"].includes(operation)) {
     response.writeHead(400, { "Content-Type": "application/json" });
@@ -50,6 +90,10 @@ async function handleRun(request, response) {
   await mkdir(path.join(workspace, ".kona"), { recursive: true });
   const manifestPath = path.join(workspace, ".kona", "web-manifest.yaml");
   await writeFile(manifestPath, manifest || "");
+  await writeFile(
+    path.join(workspace, ".kona", "session.json"),
+    JSON.stringify({ manifest: manifest || "", operation, updatedAt: new Date().toISOString() }, null, 2) + "\n",
+  );
 
   const child = spawn(process.execPath, [
     path.join(workspace, "apps/cli/dist/cli.js"),

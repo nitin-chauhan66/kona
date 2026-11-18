@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { watch } from "node:fs";
 import path from "node:path";
 import {
   parseKonaManifest,
@@ -18,6 +19,10 @@ const jsonOutput = args.includes("--json");
 async function main(): Promise<void> {
   if (operation === "--help" || operation === "-h" || operation === "help") {
     printHelp();
+    return;
+  }
+  if (operation === "watch") {
+    await watchManifest(manifestArg);
     return;
   }
   if (operation === "lock") {
@@ -244,6 +249,39 @@ function emit(payload: unknown): void {
   }
 }
 
+async function watchManifest(manifestPath: string): Promise<void> {
+  let running = false;
+  console.log(`Watching ${manifestPath} for changes...`);
+
+  const run = async () => {
+    if (running) return;
+    running = true;
+    try {
+      const source = await readFile(manifestPath, "utf8");
+      const validation = parseKonaManifest(source);
+      if (!validation.ok || !validation.manifest) {
+        for (const diagnostic of validation.errors) {
+          console.log(`ERROR ${diagnostic.message}`);
+        }
+      } else {
+        const result = await executeOperation("lint", validation.manifest);
+        for (const diagnostic of result.diagnostics) {
+          console.log(`${diagnostic.severity.toUpperCase()} ${diagnostic.message}`);
+        }
+      }
+    } catch (error) {
+      console.log(`ERROR ${String(error)}`);
+    } finally {
+      running = false;
+    }
+  };
+
+  await run();
+  watch(manifestPath, { persistent: true }, () => {
+    void run();
+  });
+}
+
 function printHelp(): void {
   console.log(`Kona CLI
 
@@ -252,6 +290,7 @@ Usage:
   kona run [manifest] [--json]
   kona prove [manifest] [--json]
   kona lock [--json]
+  kona watch [manifest]
 
 Default manifest: kona.yaml`);
 }

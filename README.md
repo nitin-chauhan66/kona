@@ -43,6 +43,16 @@ Open `http://127.0.0.1:4173`. The cockpit provides an editor, lint/run/prove
 operation tabs, and structured diagnostics. It uses the local CLI; no RTL is
 uploaded to a server.
 
+## Phase 2 workspace integration
+
+Use `npm run watch` to re-run lint whenever `kona.yaml` changes. VS Code users
+can run the included Kona lint, run, and watch tasks from the command palette.
+The web cockpit automatically restores and saves editor state in `.kona/session.json`.
+
+`apps/desktop/src-tauri` contains the Tauri v2 desktop shell scaffold. Native
+Verilator/Icarus process integration remains delegated to the shared CLI runner
+until native IPC commands are installed.
+
 The Phase 1 scaffold includes manifest contracts, a structured CLI runner, and
 a local web cockpit. Additional native desktop, WASM, and AI integrations can
 build on these shared contracts in later phases.

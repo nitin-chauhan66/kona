@@ -4,6 +4,35 @@ const status = document.querySelector("#status");
 const runButton = document.querySelector("#runButton");
 const operationButtons = [...document.querySelectorAll("[data-operation]")];
 let operation = "lint";
+let saveTimer;
+
+loadSession();
+manifest.addEventListener("input", () => {
+  window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(saveSession, 500);
+});
+
+async function loadSession() {
+  try {
+    const response = await fetch("/api/session");
+    if (!response.ok) return;
+    const session = await response.json();
+    if (typeof session.manifest === "string") {
+      manifest.value = session.manifest;
+      status.textContent = "Session restored";
+    }
+  } catch {
+    // A missing session is expected on a fresh workspace.
+  }
+}
+
+async function saveSession() {
+  await fetch("/api/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ manifest: manifest.value, operation }),
+  }).catch(() => {});
+}
 
 operationButtons.forEach((button) => {
   button.addEventListener("click", () => {
