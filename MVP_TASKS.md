@@ -33,15 +33,14 @@ follow-up workstreams.
 | DESKTOP-03 | Add native operation IPC | Blocked | DESKTOP-02 |
 | DESKTOP-04 | Add macOS smoke-test workflow | Ready | DESKTOP-03 |
 | SIM-01 | Define browser simulation contract | Done | WEB-02 |
-| SIM-02 | Integrate Verilator WASM worker | Blocked | SIM-01 |
-| SIM-03 | Add browser run diagnostics | Blocked | SIM-02 |
+| SIM-02 | Integrate Verilator WASM worker | In progress | SIM-01 |
+| SIM-03 | Add browser run diagnostics | Done | SIM-02 |
 | WAVE-01 | Define waveform artifact contract | Done | MVP-02 |
-| WAVE-02 | Add VCD parser worker | Blocked | WAVE-01 |
-| WAVE-03 | Add waveform signal viewer | Blocked | WAVE-02 |
+| WAVE-02 | Add VCD parser worker | Done | WAVE-01 |
+| WAVE-03 | Add waveform signal viewer | Done | WAVE-02 |
 
 The MVP workstream is complete. The next parallel workstreams are desktop
-packaging (DESKTOP-01), browser simulation contracts (SIM-01), and waveform
-artifact design (WAVE-01).
+packaging (DESKTOP-01) and browser simulation (SIM-02/SIM-03).
 
 ## Focused task definitions
 
@@ -252,7 +251,7 @@ memory limits.
 
 ### SIM-02 — Integrate Verilator WASM worker
 
-**Status:** Blocked
+**Status:** In progress
 
 **Scope:** Run supported 2-state unit simulations in a Web Worker without
 freezing the editor.
@@ -263,9 +262,14 @@ freezing the editor.
 - RTL/testbench inputs remain local to the browser.
 - A passing and failing sample produce structured results.
 
+**Implementation:** Standalone web builds now include a real Verilator WASM
+worker for local compile diagnostics and browser-size checks. Full 2-state
+simulation remains dependent on a native build-capable engine because this WASM
+distribution does not compile generated C++ in the browser.
+
 ### SIM-03 — Add browser run diagnostics
 
-**Status:** Blocked
+**Status:** Done
 
 **Scope:** Render simulation output, source locations, runtime failures, and
 resource-limit guidance in the web cockpit.
@@ -275,6 +279,10 @@ resource-limit guidance in the web cockpit.
 - Compile and runtime diagnostics are distinguishable.
 - Failed simulations never appear as successful results.
 - Designs exceeding browser limits receive a desktop handoff message.
+
+**Implementation:** Standalone run requests distinguish compile failures from
+the unsupported simulation step, preserve non-success status, and provide
+actionable native handoff guidance for oversized workspaces.
 
 ### WAVE-01 — Define waveform artifact contract
 

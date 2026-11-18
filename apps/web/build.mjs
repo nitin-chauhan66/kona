@@ -22,6 +22,19 @@ await build({
   platform: "browser",
   target: "es2022",
 });
+await build({
+  entryPoints: [path.join(root, "apps/web/public/verilator-worker-entry.js")],
+  bundle: true,
+  format: "esm",
+  outfile: path.join(publicDir, "verilator-worker.js"),
+  platform: "browser",
+  target: "es2022",
+  external: ["node:fs/promises"],
+});
 for (const wasm of ["yosys.core.wasm", "yosys.core2.wasm", "yosys.core3.wasm", "yosys.core4.wasm"]) {
   await cp(path.join(root, "node_modules/@yowasp/yosys/gen", wasm), path.join(publicDir, wasm));
 }
+await cp(
+  path.join(root, "node_modules/verilator-wasm/dist/verilator.wasm"),
+  path.join(publicDir, "verilator.wasm"),
+);

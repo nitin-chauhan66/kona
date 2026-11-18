@@ -7,3 +7,4 @@ target/
 .vayu/
 apps/web/public/app.bundle.js
 apps/web/public/yosys.core*.wasm
+apps/web/public/verilator.wasm

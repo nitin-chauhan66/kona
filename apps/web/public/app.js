@@ -24,6 +24,10 @@ let runInProgress = false;
 let runSequence = 0;
 const localSessionKey = "kona-session";
 const selectedFiles = new Map();
+const browserLimits = {
+  maxFiles: 256,
+  maxBytes: 8 * 1024 * 1024,
+};
 
 loadSession();
 setStatus(`Browser WASM ready (Yosys ${yosysVersion})`, "success");
@@ -131,9 +135,9 @@ async function updateCapabilities() {
       .map(([name]) => name);
     capability.textContent = available.length > 0
       ? `Native mode connected: ${available.join(", ")}. Browser WASM lint is also available.`
-      : "Browser mode: Yosys WASM lint is available. Run and Prove use native engines when connected.";
+      : "Browser mode: Yosys WASM lint and Verilator WASM compile checks are available. Simulation and formal proof use native engines when connected.";
   } catch {
-    capability.textContent = "Standalone browser mode: Yosys WASM lint is available. Run and Prove require the native app or CLI.";
+    capability.textContent = "Standalone browser mode: Yosys WASM lint and Verilator WASM compile checks are available. Simulation and formal proof require the native app or CLI.";
   }
 }
 
@@ -214,13 +218,82 @@ async function run() {
       // Static deployments intentionally use the local WASM engine below.
     }
     if (operation === "lint") return runBrowserLint(projectManifest);
+    if (operation === "run" && projectManifest.sim_mode === "fast_2state") {
+      return runBrowserVerilatorCheck(projectManifest);
+    }
     return {
       ok: false,
       diagnostics: [{
-        severity: "error",
-        message: `Standalone browser mode does not yet provide ${operation} execution. Use lint or the native Docker/CLI engine.`,
+        severity: "warning",
+        message: `Standalone browser mode does not provide ${operation} execution. Use the native Docker/CLI engine.`,
       }],
     };
+  }
+
+  async function runBrowserVerilatorCheck(projectManifest) {
+    const files = Object.fromEntries(selectedFiles);
+    const missing = projectManifest.rtl_files.filter((file) => !selectedFiles.has(file));
+    if (projectManifest.testbench && !selectedFiles.has(projectManifest.testbench)) {
+      missing.push(projectManifest.testbench);
+    }
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        diagnostics: [{
+          severity: "error",
+          message: `Load the RTL workspace directory; missing ${missing.join(", ")}`,
+        }],
+      };
+    }
+    if (selectedFiles.size > browserLimits.maxFiles) {
+      return {
+        ok: false,
+        diagnostics: [{
+          severity: "error",
+          message: `Browser workspace exceeds ${browserLimits.maxFiles} files. Use the native engine handoff.`,
+        }],
+      };
+    }
+    const byteSize = [...selectedFiles.values()]
+      .reduce((total, source) => total + new TextEncoder().encode(source).byteLength, 0);
+    if (byteSize > browserLimits.maxBytes) {
+      return {
+        ok: false,
+        diagnostics: [{
+          severity: "error",
+          message: `Browser workspace exceeds ${browserLimits.maxBytes / 1024 / 1024} MiB. Use the native engine handoff.`,
+        }],
+      };
+    }
+    const args = [
+      "--lint-only",
+      "--language", "1800-2012",
+      "--top-module", projectManifest.top_module,
+      ...(projectManifest.include_dirs ?? []).map((directory) => `-I${directory}`),
+      ...projectManifest.rtl_files,
+      ...(projectManifest.testbench ? [projectManifest.testbench] : []),
+    ];
+    try {
+      const result = await runVerilatorWorker({ ...files, "/dev/null": "" }, args);
+      if (!result.ok) {
+        return { ok: false, diagnostics: parseToolOutput(result.stderr || result.error || "Verilator WASM failed") };
+      }
+      return {
+        ok: false,
+        diagnostics: [
+          { severity: "info", message: "Verilator WASM compile check passed." },
+          { severity: "warning", message: "Standalone browser simulation is not available because Verilator execution requires a native build step. Use Docker/CLI for the run result." },
+        ],
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        diagnostics: [{
+          severity: "error",
+          message: error instanceof Error ? error.message : String(error),
+        }],
+      };
+    }
   }
 
   async function runBrowserLint(projectManifest) {
@@ -272,6 +345,28 @@ async function run() {
     }));
   }
 
+}
+
+function runVerilatorWorker(files, args) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker("/verilator-worker.js", { type: "module" });
+    const id = crypto.randomUUID();
+    const cleanup = () => {
+      worker.onmessage = null;
+      worker.onerror = null;
+      void worker.terminate();
+    };
+    worker.onmessage = (event) => {
+      if (event.data?.id !== id) return;
+      cleanup();
+      resolve(event.data);
+    };
+    worker.onerror = (event) => {
+      cleanup();
+      reject(new Error(event.message || "Verilator WASM worker failed"));
+    };
+    worker.postMessage({ id, files, args });
+  });
 }
 
 async function readJson(response) {

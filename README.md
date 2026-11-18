@@ -55,10 +55,11 @@ from any static file host. No Kona application server or RTL upload endpoint is
 required for browser linting. The browser stores the selected workspace in
 OPFS when supported, so reloads do not require reselecting RTL files.
 
-The standalone web mode currently supports real Yosys WebAssembly linting.
-Verilator 2-state simulation, Icarus 4-state simulation, and SymbiYosys proof
-remain native operations and are used automatically when the local server or
-desktop runtime is connected.
+The standalone web mode supports real Yosys WebAssembly linting and Verilator
+WebAssembly compile diagnostics. Verilator 2-state simulation, Icarus 4-state
+simulation, and SymbiYosys proof remain native operations and are used
+automatically when the local server or desktop runtime is connected. A
+standalone run never reports success after only a compile check.
 
 ## Phase 2 workspace integration
 
