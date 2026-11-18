@@ -26,7 +26,7 @@ Synopsys Verdi, and VS Code:
 
 - Browser onboarding runs locally through WebAssembly with no cloud simulation
   compute and no required IP upload.
-- Tauri desktop and the `vayu` CLI provide native filesystems, Git,
+- Tauri desktop and the `kona` CLI provide native filesystems, Git,
   multi-core simulation, Python/PyUVM regressions, and CI integration.
 - A shared React/TypeScript presentation layer provides Monaco RTL editing,
   Surfer waveform debugging, and trace-grounded AI assistance.
@@ -115,7 +115,7 @@ implemented by three targets:
 - **Frontend:** React 19, TypeScript, Tailwind CSS, Monaco, custom
   SystemVerilog/SVA language support, and Surfer Rust-to-WASM.
 - **Desktop/CLI:** Tauri v2, Rust native IPC/file watching/process management,
-  and a standalone Rust or Go `vayu` binary sharing the runner core.
+  and a standalone Rust or Go `kona` binary sharing the runner core.
 - **EDA core:** Yosys/YoWASP, Verilator, Icarus Verilog, SymbiYosys with Z3 or
   Yices, Python 3, Cocotb, and PyUVM.
 - **Agent layer:** MCP in Rust or Go, local Ollama (Qwen2.5-Coder or

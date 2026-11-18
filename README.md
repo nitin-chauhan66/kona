@@ -19,6 +19,30 @@ npm run build
 cargo check
 ```
 
-The current scaffold defines contracts and configuration only. Runtime adapters
-for WebAssembly, native desktop, and the CLI can implement these contracts
-incrementally in the phased delivery plan.
+## Phase 1 CLI
+
+```bash
+npm run build
+npm run kona -- lint examples/kona.yaml --json
+npm run kona -- run examples/kona.yaml --json
+npm run kona -- prove examples/kona.yaml --json
+npm run kona -- lock --json
+```
+
+The CLI validates `kona.yaml`, invokes Verilator/Icarus/SymbiYosys when they are
+installed, and emits structured JSON with `--json`. Missing tools are reported
+clearly instead of silently producing a successful result.
+
+## Local web cockpit
+
+```bash
+npm run dev
+```
+
+Open `http://127.0.0.1:4173`. The cockpit provides an editor, lint/run/prove
+operation tabs, and structured diagnostics. It uses the local CLI; no RTL is
+uploaded to a server.
+
+The Phase 1 scaffold includes manifest contracts, a structured CLI runner, and
+a local web cockpit. Additional native desktop, WASM, and AI integrations can
+build on these shared contracts in later phases.

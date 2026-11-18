@@ -1,8 +1,7 @@
 {
   "files": [],
   "references": [
-    {
-      "path": "./packages/compute-contract"
-    }
+    { "path": "./packages/compute-contract" },
+    { "path": "./apps/cli" }
   ]
 }

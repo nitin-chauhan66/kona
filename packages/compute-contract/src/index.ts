@@ -64,3 +64,87 @@ export function isSimulationMode(value: string): value is SimulationMode {
     value === "accurate_4state" ||
     value === "formal";
 }
+
+export interface ManifestValidation {
+  ok: boolean;
+  manifest?: ProjectManifest;
+  errors: Diagnostic[];
+}
+
+export function parseKonaManifest(source: string): ManifestValidation {
+  let raw: Record<string, unknown>;
+
+  try {
+    raw = JSON.parse(source) as Record<string, unknown>;
+  } catch {
+    raw = parseSimpleYaml(source);
+  }
+
+  const errors: Diagnostic[] = [];
+  const requiredStrings = ["project_name", "top_module"] as const;
+  for (const key of requiredStrings) {
+    if (typeof raw[key] !== "string" || raw[key].trim() === "") {
+      errors.push({ severity: "error", message: `Missing required string: ${key}` });
+    }
+  }
+
+  if (!Array.isArray(raw.rtl_files) || raw.rtl_files.length === 0 ||
+      raw.rtl_files.some((value) => typeof value !== "string")) {
+    errors.push({ severity: "error", message: "rtl_files must contain at least one file path" });
+  }
+  if (typeof raw.sim_mode !== "string" || !isSimulationMode(raw.sim_mode)) {
+    errors.push({
+      severity: "error",
+      message: "sim_mode must be fast_2state, accurate_4state, or formal",
+    });
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+
+  const manifest: ProjectManifest = {
+    project_name: raw.project_name as string,
+    top_module: raw.top_module as string,
+    rtl_files: raw.rtl_files as string[],
+    include_dirs: asStringArray(raw.include_dirs),
+    sim_mode: raw.sim_mode as SimulationMode,
+    testbench: typeof raw.testbench === "string" ? raw.testbench : undefined,
+    waveform_signals: asStringArray(raw.waveform_signals),
+  };
+  return { ok: true, manifest, errors: [] };
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? value as string[]
+    : undefined;
+}
+
+function parseSimpleYaml(source: string): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  let activeArray: string[] | undefined;
+  let activeKey: string | undefined;
+
+  for (const line of source.replace(/\r/g, "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    if (/^- /.test(trimmed) && activeKey && activeArray) {
+      activeArray.push(trimmed.slice(2).trim().replace(/^["']|["']$/g, ""));
+      continue;
+    }
+
+    const match = /^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/.exec(trimmed);
+    if (!match) continue;
+
+    activeKey = match[1];
+    const value = match[2].trim();
+    if (value === "") {
+      activeArray = [];
+      result[activeKey] = activeArray;
+    } else {
+      activeArray = undefined;
+      result[activeKey] = value.replace(/^["']|["']$/g, "");
+    }
+  }
+  return result;
+}
