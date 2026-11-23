@@ -124,11 +124,11 @@ export class WaveformViewer {
 
   public render(): void {
     if (!this.trace) {
-      this.ctx.fillStyle = '#0f172a';
+      this.ctx.fillStyle = '#111318';
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-      this.ctx.fillStyle = '#64748b';
-      this.ctx.font = '14px system-ui';
-      this.ctx.fillText('No simulation trace loaded. Click "Run Local Wasm Sim" to simulate.', 24, 40);
+      this.ctx.fillStyle = '#8e919a';
+      this.ctx.font = '13px "Google Sans", "Roboto", sans-serif';
+      this.ctx.fillText('No simulation trace loaded. Click "Run Simulation" above to execute Wasm simulation.', 24, 40);
       return;
     }
 
@@ -141,8 +141,8 @@ export class WaveformViewer {
     this.ctx.save();
     this.ctx.scale(dpr, dpr);
 
-    // Canvas Background
-    this.ctx.fillStyle = '#0f172a';
+    // Canvas Background (Material 3 Surface)
+    this.ctx.fillStyle = '#111318';
     this.ctx.fillRect(0, 0, w, h);
 
     // Update Sidebar Signal List & Values at cursor
@@ -162,7 +162,7 @@ export class WaveformViewer {
     // Draw Time Cursor
     if (this.cursorTime !== null) {
       const cursorX = this.panOffset + this.cursorTime * this.zoom;
-      this.ctx.strokeStyle = '#f43f5e'; // Rose 500
+      this.ctx.strokeStyle = '#f2b8b5'; // M3 Error / Rose
       this.ctx.lineWidth = 1.5;
       this.ctx.setLineDash([3, 3]);
       this.ctx.beginPath();
@@ -179,9 +179,9 @@ export class WaveformViewer {
   }
 
   private drawTimelineHeader(w: number, headerH: number): void {
-    this.ctx.fillStyle = '#1e293b';
+    this.ctx.fillStyle = '#1a1d26';
     this.ctx.fillRect(0, 0, w, headerH);
-    this.ctx.strokeStyle = '#334155';
+    this.ctx.strokeStyle = '#44474f';
     this.ctx.beginPath();
     this.ctx.moveTo(0, headerH);
     this.ctx.lineTo(w, headerH);
@@ -192,8 +192,8 @@ export class WaveformViewer {
     const maxT = this.trace.maxTime || 100;
     const tickStep = Math.max(5, Math.pow(10, Math.floor(Math.log10(maxT / 5))));
 
-    this.ctx.fillStyle = '#94a3b8';
-    this.ctx.font = '10px monospace';
+    this.ctx.fillStyle = '#8e919a';
+    this.ctx.font = '10px "Roboto Mono", monospace';
 
     for (let t = 0; t <= maxT; t += tickStep) {
       const x = this.panOffset + t * this.zoom;
@@ -201,7 +201,7 @@ export class WaveformViewer {
       this.ctx.beginPath();
       this.ctx.moveTo(x, headerH - 6);
       this.ctx.lineTo(x, headerH);
-      this.ctx.strokeStyle = '#475569';
+      this.ctx.strokeStyle = '#44474f';
       this.ctx.stroke();
       this.ctx.fillText(`${t}ns`, x + 3, headerH - 8);
     }
@@ -215,7 +215,7 @@ export class WaveformViewer {
     canvasW: number
   ): void {
     // Row background separator
-    this.ctx.strokeStyle = '#1e293b';
+    this.ctx.strokeStyle = '#20242f';
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
     this.ctx.moveTo(0, y + rowH);
@@ -227,8 +227,8 @@ export class WaveformViewer {
     const midY = (highY + lowY) / 2;
 
     if (width === 1) {
-      // 1-bit Digital Square Wave
-      this.ctx.strokeStyle = '#38bdf8'; // Cyan
+      // 1-bit Digital Square Wave (Material 3 Secondary: #7fcfff)
+      this.ctx.strokeStyle = '#7fcfff';
       this.ctx.lineWidth = 2;
       this.ctx.beginPath();
 
@@ -257,9 +257,9 @@ export class WaveformViewer {
       }
       this.ctx.stroke();
     } else {
-      // Multi-bit Bus Transition Boxes
-      this.ctx.strokeStyle = '#a855f7'; // Purple
-      this.ctx.fillStyle = '#2e1065';
+      // Multi-bit Bus Transition Boxes (Material 3 Secondary Container)
+      this.ctx.strokeStyle = '#7fcfff';
+      this.ctx.fillStyle = '#004d67';
       this.ctx.lineWidth = 1.5;
 
       let prevX = this.panOffset;
@@ -285,8 +285,8 @@ export class WaveformViewer {
           // Value Text
           const formatted = formatSignalValue(prevVal, width, this.radix);
           if (nextX - prevX > 28) {
-            this.ctx.fillStyle = '#e9d5ff';
-            this.ctx.font = '10px monospace';
+            this.ctx.fillStyle = '#c2e7ff';
+            this.ctx.font = '10px "Roboto Mono", monospace';
             this.ctx.fillText(formatted, prevX + 6, midY + 3);
           }
         }
@@ -310,8 +310,8 @@ export class WaveformViewer {
           this.ctx.stroke();
 
           const formatted = formatSignalValue(prevVal, width, this.radix);
-          this.ctx.fillStyle = '#e9d5ff';
-          this.ctx.font = '10px monospace';
+          this.ctx.fillStyle = '#c2e7ff';
+          this.ctx.font = '10px "Roboto Mono", monospace';
           this.ctx.fillText(formatted, prevX + 6, midY + 3);
         }
       }

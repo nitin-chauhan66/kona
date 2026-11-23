@@ -317,6 +317,142 @@ var require_catalog = __commonJS({
           { id: "clk_out", name: "clk_out", direction: "output", type: "clock", width: 1, description: "Master system clock" },
           { id: "rst_n_out", name: "rst_n_out", direction: "output", type: "reset", width: 1, description: "Power-on active-low reset" }
         ]
+      },
+      {
+        id: "ibex",
+        name: "lowRISC Ibex RISC-V Core",
+        category: "processor",
+        description: "Silicon-proven 32-bit 2-stage RISC-V core (RV32IMC) used in OpenTitan Root-of-Trust",
+        defaultWidth: 230,
+        defaultHeight: 280,
+        parameters: [
+          { name: "PMP_ENABLE", type: "boolean", default: false, description: "Enable Physical Memory Protection (PMP)" },
+          { name: "RV32M", type: "boolean", default: true, description: "Enable hardware multiplier and divider" },
+          { name: "RV32B", type: "boolean", default: false, description: "Enable Bitmanip (Zba, Zbb, Zbc, Zbs)" }
+        ],
+        ports: [
+          { id: "clk", name: "clk", direction: "input", type: "clock", width: 1, description: "Primary CPU clock" },
+          { id: "rst_n", name: "rst_n", direction: "input", type: "reset", width: 1, description: "Active-low reset" },
+          { id: "instr_req", name: "instr_req", direction: "output", type: "data", width: 1, description: "Instruction fetch request" },
+          { id: "instr_gnt", name: "instr_gnt", direction: "input", type: "data", width: 1, description: "Instruction memory grant" },
+          { id: "instr_rvalid", name: "instr_rvalid", direction: "input", type: "data", width: 1, description: "Instruction read valid" },
+          { id: "instr_addr", name: "instr_addr", direction: "output", type: "bus", width: 32, description: "Instruction fetch address" },
+          { id: "instr_rdata", name: "instr_rdata", direction: "input", type: "bus", width: 32, description: "Instruction read data" },
+          { id: "data_req", name: "data_req", direction: "output", type: "data", width: 1, description: "Data memory transaction request" },
+          { id: "data_gnt", name: "data_gnt", direction: "input", type: "data", width: 1, description: "Data memory bus grant" },
+          { id: "data_rvalid", name: "data_rvalid", direction: "input", type: "data", width: 1, description: "Data read response valid" },
+          { id: "data_we", name: "data_we", direction: "output", type: "data", width: 1, description: "Data write enable" },
+          { id: "data_addr", name: "data_addr", direction: "output", type: "bus", width: 32, description: "Data memory address" },
+          { id: "data_wdata", name: "data_wdata", direction: "output", type: "bus", width: 32, description: "Data write payload" },
+          { id: "data_rdata", name: "data_rdata", direction: "input", type: "bus", width: 32, description: "Data read payload" },
+          { id: "irq_software", name: "irq_software", direction: "input", type: "data", width: 1, description: "Software interrupt line" },
+          { id: "irq_timer", name: "irq_timer", direction: "input", type: "data", width: 1, description: "Machine timer interrupt line" },
+          { id: "irq_external", name: "irq_external", direction: "input", type: "data", width: 1, description: "External PLIC interrupt line" }
+        ]
+      },
+      {
+        id: "wishbone_crossbar",
+        name: "Wishbone B4 Crossbar",
+        category: "interconnect",
+        description: "LiteX-compatible Wishbone crossbar interconnect with address decoding",
+        defaultWidth: 240,
+        defaultHeight: 280,
+        parameters: [
+          { name: "S0_BASE_ADDR", type: "integer", default: 0, description: "Base address for Slave 0 (e.g. RAM 0x00000000)" },
+          { name: "S1_BASE_ADDR", type: "integer", default: 268435456, description: "Base address for Slave 1 (e.g. Peripherals 0x10000000)" }
+        ],
+        ports: [
+          { id: "clk", name: "clk", direction: "input", type: "clock", width: 1, description: "Interconnect clock" },
+          { id: "rst_n", name: "rst_n", direction: "input", type: "reset", width: 1, description: "Active-low reset" },
+          { id: "wb_cyc_i", name: "wb_cyc_i", direction: "input", type: "data", width: 1, description: "Master bus cycle valid" },
+          { id: "wb_stb_i", name: "wb_stb_i", direction: "input", type: "data", width: 1, description: "Master strobe valid" },
+          { id: "wb_we_i", name: "wb_we_i", direction: "input", type: "data", width: 1, description: "Master write enable" },
+          { id: "wb_adr_i", name: "wb_adr_i", direction: "input", type: "bus", width: 32, description: "Master address bus" },
+          { id: "wb_dat_i", name: "wb_dat_i", direction: "input", type: "bus", width: 32, description: "Master write data bus" },
+          { id: "wb_dat_o", name: "wb_dat_o", direction: "output", type: "bus", width: 32, description: "Master read data bus" },
+          { id: "wb_ack_o", name: "wb_ack_o", direction: "output", type: "data", width: 1, description: "Master acknowledge" },
+          { id: "s0_cyc_o", name: "s0_cyc_o", direction: "output", type: "data", width: 1, description: "Slave 0 cycle valid" },
+          { id: "s0_stb_o", name: "s0_stb_o", direction: "output", type: "data", width: 1, description: "Slave 0 strobe" },
+          { id: "s0_adr_o", name: "s0_adr_o", direction: "output", type: "bus", width: 32, description: "Slave 0 address bus" },
+          { id: "s0_dat_o", name: "s0_dat_o", direction: "output", type: "bus", width: 32, description: "Slave 0 write data" },
+          { id: "s0_dat_i", name: "s0_dat_i", direction: "input", type: "bus", width: 32, description: "Slave 0 read data" },
+          { id: "s0_ack_i", name: "s0_ack_i", direction: "input", type: "data", width: 1, description: "Slave 0 acknowledge" },
+          { id: "s1_cyc_o", name: "s1_cyc_o", direction: "output", type: "data", width: 1, description: "Slave 1 cycle valid" },
+          { id: "s1_stb_o", name: "s1_stb_o", direction: "output", type: "data", width: 1, description: "Slave 1 strobe" },
+          { id: "s1_adr_o", name: "s1_adr_o", direction: "output", type: "bus", width: 32, description: "Slave 1 address bus" },
+          { id: "s1_dat_o", name: "s1_dat_o", direction: "output", type: "bus", width: 32, description: "Slave 1 write data" },
+          { id: "s1_dat_i", name: "s1_dat_i", direction: "input", type: "bus", width: 32, description: "Slave 1 read data" },
+          { id: "s1_ack_i", name: "s1_ack_i", direction: "input", type: "data", width: 1, description: "Slave 1 acknowledge" }
+        ]
+      },
+      {
+        id: "spi_controller",
+        name: "SPI Master Controller",
+        category: "peripheral",
+        description: "Motorola SPI master transceiver for Flash memory and external sensor buses",
+        defaultWidth: 210,
+        defaultHeight: 240,
+        parameters: [
+          { name: "CLK_DIV", type: "integer", default: 8, description: "Baud clock division factor" },
+          { name: "DATA_WIDTH", type: "integer", default: 8, description: "SPI word transfer width" }
+        ],
+        ports: [
+          { id: "clk", name: "clk", direction: "input", type: "clock", width: 1, description: "System clock" },
+          { id: "rst_n", name: "rst_n", direction: "input", type: "reset", width: 1, description: "Active-low reset" },
+          { id: "tx_data", name: "tx_data", direction: "input", type: "bus", width: 8, description: "TX byte to transmit" },
+          { id: "tx_valid", name: "tx_valid", direction: "input", type: "data", width: 1, description: "TX data valid strobe" },
+          { id: "tx_ready", name: "tx_ready", direction: "output", type: "data", width: 1, description: "SPI transmitter ready" },
+          { id: "rx_data", name: "rx_data", direction: "output", type: "bus", width: 8, description: "Received RX byte" },
+          { id: "rx_valid", name: "rx_valid", direction: "output", type: "data", width: 1, description: "RX data valid strobe" },
+          { id: "spi_sclk", name: "spi_sclk", direction: "output", type: "clock", width: 1, description: "SPI serial clock output" },
+          { id: "spi_cs_n", name: "spi_cs_n", direction: "output", type: "data", width: 1, description: "Active-low chip select" },
+          { id: "spi_mosi", name: "spi_mosi", direction: "output", type: "data", width: 1, description: "Master Out Slave In pin" },
+          { id: "spi_miso", name: "spi_miso", direction: "input", type: "data", width: 1, description: "Master In Slave Out pin" }
+        ]
+      },
+      {
+        id: "i2c_controller",
+        name: "I2C Master Controller",
+        category: "peripheral",
+        description: "Standard 100k/400k I2C bus controller for PMICs, temperature sensors, and EEPROMs",
+        defaultWidth: 200,
+        defaultHeight: 240,
+        parameters: [
+          { name: "PRESCALE", type: "integer", default: 125, description: "Prescale divider for 100kHz standard mode" }
+        ],
+        ports: [
+          { id: "clk", name: "clk", direction: "input", type: "clock", width: 1, description: "System clock" },
+          { id: "rst_n", name: "rst_n", direction: "input", type: "reset", width: 1, description: "Active-low reset" },
+          { id: "addr", name: "addr", direction: "input", type: "bus", width: 8, description: "7-bit target slave address" },
+          { id: "din", name: "din", direction: "input", type: "bus", width: 8, description: "Write payload byte" },
+          { id: "start", name: "start", direction: "input", type: "data", width: 1, description: "Initiate transaction strobe" },
+          { id: "busy", name: "busy", direction: "output", type: "data", width: 1, description: "I2C bus active/busy" },
+          { id: "dout", name: "dout", direction: "output", type: "bus", width: 8, description: "Read payload byte" },
+          { id: "ack_err", name: "ack_err", direction: "output", type: "data", width: 1, description: "NACK acknowledgment error" },
+          { id: "scl", name: "scl", direction: "output", type: "clock", width: 1, description: "I2C serial clock pin" },
+          { id: "sda_out", name: "sda_out", direction: "output", type: "data", width: 1, description: "I2C serial data output" },
+          { id: "sda_in", name: "sda_in", direction: "input", type: "data", width: 1, description: "I2C serial data input" }
+        ]
+      },
+      {
+        id: "timer_core",
+        name: "32-bit System Timer & Watchdog",
+        category: "peripheral",
+        description: "Hardware timer with compare register generating periodic ticks and watchdog reset interrupts",
+        defaultWidth: 200,
+        defaultHeight: 220,
+        parameters: [
+          { name: "PRESCALER", type: "integer", default: 50, description: "Timer tick prescaler divisor" }
+        ],
+        ports: [
+          { id: "clk", name: "clk", direction: "input", type: "clock", width: 1, description: "System clock" },
+          { id: "rst_n", name: "rst_n", direction: "input", type: "reset", width: 1, description: "Active-low reset" },
+          { id: "addr", name: "addr", direction: "input", type: "bus", width: 32, description: "Register address bus" },
+          { id: "wdata", name: "wdata", direction: "input", type: "bus", width: 32, description: "Register write data" },
+          { id: "we", name: "we", direction: "input", type: "data", width: 1, description: "Write strobe" },
+          { id: "rdata", name: "rdata", direction: "output", type: "bus", width: 32, description: "Register read data" },
+          { id: "irq", name: "irq", direction: "output", type: "data", width: 1, description: "Timer compare interrupt pulse" }
+        ]
       }
     ];
     function getModuleDef3(moduleId) {
@@ -526,6 +662,598 @@ var require_catalog = __commonJS({
             }
           ]
         })
+      },
+      {
+        id: "opentitan_rot",
+        name: "OpenTitan Root-of-Trust SoC (Google / lowRISC)",
+        description: "Silicon-proven root-of-trust architecture featuring lowRISC Ibex RV32IMC core, AXI-Lite crossbar, secure SRAM, 32-bit system timer, and UART",
+        createDesign: () => ({
+          version: "1.0",
+          name: "OpenTitan Root-of-Trust Subsystem",
+          topModule: "top",
+          metadata: {
+            version: "1.0",
+            created: (/* @__PURE__ */ new Date()).toISOString(),
+            modified: (/* @__PURE__ */ new Date()).toISOString(),
+            description: "OpenTitan Silicon Root-of-Trust with lowRISC Ibex RV32IMC core, AXI-Lite interconnect, secure RAM, timer, and UART"
+          },
+          instances: [
+            {
+              id: "sys_clk_gen",
+              moduleId: "clock_gen",
+              name: "u_clk_gen",
+              position: { x: 60, y: 140 },
+              parameters: { FREQ_MHZ: 50 }
+            },
+            {
+              id: "ibex_0",
+              moduleId: "ibex",
+              name: "u_ibex_core",
+              position: { x: 320, y: 100 },
+              parameters: { PMP_ENABLE: false, RV32M: true, RV32B: false }
+            },
+            {
+              id: "xbar_0",
+              moduleId: "axi_crossbar",
+              name: "u_axi_xbar",
+              position: { x: 680, y: 100 },
+              parameters: { S0_BASE_ADDR: 0, S0_ADDR_MASK: 65535, S1_BASE_ADDR: 268435456, S1_ADDR_MASK: 65535 }
+            },
+            {
+              id: "ram_0",
+              moduleId: "ram_dual_port",
+              name: "u_secure_ram",
+              position: { x: 1020, y: 60 },
+              parameters: { ADDR_WIDTH: 14, DATA_WIDTH: 32 }
+            },
+            {
+              id: "timer_0",
+              moduleId: "timer_core",
+              name: "u_sys_timer",
+              position: { x: 1020, y: 340 },
+              parameters: { PRESCALER: 50 }
+            },
+            {
+              id: "uart_0",
+              moduleId: "uart_core",
+              name: "u_sec_uart",
+              position: { x: 1020, y: 600 },
+              parameters: { BAUD_DIVISOR: 434 }
+            }
+          ],
+          nets: [
+            {
+              id: "net_clk",
+              name: "clk",
+              width: 1,
+              source: { instanceId: "sys_clk_gen", portId: "clk_out" },
+              targets: [
+                { instanceId: "ibex_0", portId: "clk" },
+                { instanceId: "xbar_0", portId: "clk" },
+                { instanceId: "ram_0", portId: "clk" },
+                { instanceId: "timer_0", portId: "clk" },
+                { instanceId: "uart_0", portId: "clk" }
+              ]
+            },
+            {
+              id: "net_rst_n",
+              name: "rst_n",
+              width: 1,
+              source: { instanceId: "sys_clk_gen", portId: "rst_n_out" },
+              targets: [
+                { instanceId: "ibex_0", portId: "rst_n" },
+                { instanceId: "xbar_0", portId: "rst_n" },
+                { instanceId: "timer_0", portId: "rst_n" },
+                { instanceId: "uart_0", portId: "rst_n" }
+              ]
+            },
+            {
+              id: "net_ibex_addr",
+              name: "ibex_mem_addr",
+              width: 32,
+              source: { instanceId: "ibex_0", portId: "data_addr" },
+              targets: [{ instanceId: "xbar_0", portId: "m_addr" }]
+            },
+            {
+              id: "net_ibex_valid",
+              name: "ibex_mem_req",
+              width: 1,
+              source: { instanceId: "ibex_0", portId: "data_req" },
+              targets: [{ instanceId: "xbar_0", portId: "m_valid" }]
+            },
+            {
+              id: "net_xbar_ready",
+              name: "xbar_ibex_gnt",
+              width: 1,
+              source: { instanceId: "xbar_0", portId: "m_ready" },
+              targets: [{ instanceId: "ibex_0", portId: "data_gnt" }]
+            },
+            {
+              id: "net_xbar_rdata",
+              name: "xbar_ibex_rdata",
+              width: 32,
+              source: { instanceId: "xbar_0", portId: "m_rdata" },
+              targets: [{ instanceId: "ibex_0", portId: "data_rdata" }]
+            },
+            {
+              id: "net_ram_addr",
+              name: "ram_addr",
+              width: 32,
+              source: { instanceId: "xbar_0", portId: "s0_addr" },
+              targets: [{ instanceId: "ram_0", portId: "addr" }]
+            },
+            {
+              id: "net_ram_valid",
+              name: "ram_en",
+              width: 1,
+              source: { instanceId: "xbar_0", portId: "s0_valid" },
+              targets: [{ instanceId: "ram_0", portId: "en" }]
+            },
+            {
+              id: "net_ram_dout",
+              name: "ram_dout",
+              width: 32,
+              source: { instanceId: "ram_0", portId: "dout" },
+              targets: [{ instanceId: "xbar_0", portId: "s0_rdata" }]
+            },
+            {
+              id: "net_timer_addr",
+              name: "timer_addr",
+              width: 32,
+              source: { instanceId: "xbar_0", portId: "s1_addr" },
+              targets: [{ instanceId: "timer_0", portId: "addr" }]
+            },
+            {
+              id: "net_timer_valid",
+              name: "timer_we",
+              width: 1,
+              source: { instanceId: "xbar_0", portId: "s1_valid" },
+              targets: [{ instanceId: "timer_0", portId: "we" }]
+            },
+            {
+              id: "net_timer_rdata",
+              name: "timer_rdata",
+              width: 32,
+              source: { instanceId: "timer_0", portId: "rdata" },
+              targets: [{ instanceId: "xbar_0", portId: "s1_rdata" }]
+            },
+            {
+              id: "net_timer_irq",
+              name: "timer_irq",
+              width: 1,
+              source: { instanceId: "timer_0", portId: "irq" },
+              targets: [{ instanceId: "ibex_0", portId: "irq_timer" }]
+            }
+          ]
+        })
+      },
+      {
+        id: "pulpissimo_edge",
+        name: "PULPissimo Edge AI & IoT SoC (ETH Z\xFCrich)",
+        description: "Silicon taped-out edge AI & microcontroller SoC featuring RISC-V core, AXI-Lite crossbar, multi-bank SRAM, SPI master, and I2C sensor bus",
+        createDesign: () => ({
+          version: "1.0",
+          name: "PULPissimo Edge AI SoC",
+          topModule: "top",
+          metadata: {
+            version: "1.0",
+            created: (/* @__PURE__ */ new Date()).toISOString(),
+            modified: (/* @__PURE__ */ new Date()).toISOString(),
+            description: "ETH Z\xFCrich PULPissimo single-core RISC-V edge computing platform with SPI and I2C sensor interfaces"
+          },
+          instances: [
+            {
+              id: "clk_gen_0",
+              moduleId: "clock_gen",
+              name: "u_clk_gen",
+              position: { x: 60, y: 140 },
+              parameters: { FREQ_MHZ: 50 }
+            },
+            {
+              id: "pulp_core",
+              moduleId: "picorv32",
+              name: "u_pulp_cpu",
+              position: { x: 320, y: 100 },
+              parameters: { ENABLE_COUNTERS: true, ENABLE_MUL: true, ENABLE_DIV: true, BARREL_SHIFTER: true, STACKADDR: 65536 }
+            },
+            {
+              id: "xbar_0",
+              moduleId: "axi_crossbar",
+              name: "u_axi_xbar",
+              position: { x: 680, y: 100 },
+              parameters: { S0_BASE_ADDR: 0, S0_ADDR_MASK: 65535, S1_BASE_ADDR: 268435456, S1_ADDR_MASK: 65535 }
+            },
+            {
+              id: "l2_sram",
+              moduleId: "ram_dual_port",
+              name: "u_l2_sram",
+              position: { x: 1020, y: 60 },
+              parameters: { ADDR_WIDTH: 14, DATA_WIDTH: 32 }
+            },
+            {
+              id: "spi_host",
+              moduleId: "spi_controller",
+              name: "u_spi_host",
+              position: { x: 1020, y: 340 },
+              parameters: { CLK_DIV: 8, DATA_WIDTH: 8 }
+            },
+            {
+              id: "i2c_sensor",
+              moduleId: "i2c_controller",
+              name: "u_i2c_sensor",
+              position: { x: 1020, y: 620 },
+              parameters: { PRESCALE: 125 }
+            }
+          ],
+          nets: [
+            {
+              id: "net_clk",
+              name: "clk",
+              width: 1,
+              source: { instanceId: "clk_gen_0", portId: "clk_out" },
+              targets: [
+                { instanceId: "pulp_core", portId: "clk" },
+                { instanceId: "xbar_0", portId: "clk" },
+                { instanceId: "l2_sram", portId: "clk" },
+                { instanceId: "spi_host", portId: "clk" },
+                { instanceId: "i2c_sensor", portId: "clk" }
+              ]
+            },
+            {
+              id: "net_rst_n",
+              name: "rst_n",
+              width: 1,
+              source: { instanceId: "clk_gen_0", portId: "rst_n_out" },
+              targets: [
+                { instanceId: "pulp_core", portId: "resetn" },
+                { instanceId: "xbar_0", portId: "rst_n" },
+                { instanceId: "spi_host", portId: "rst_n" },
+                { instanceId: "i2c_sensor", portId: "rst_n" }
+              ]
+            },
+            {
+              id: "net_cpu_addr",
+              name: "cpu_mem_addr",
+              width: 32,
+              source: { instanceId: "pulp_core", portId: "mem_addr" },
+              targets: [{ instanceId: "xbar_0", portId: "m_addr" }]
+            },
+            {
+              id: "net_cpu_valid",
+              name: "cpu_mem_valid",
+              width: 1,
+              source: { instanceId: "pulp_core", portId: "mem_valid" },
+              targets: [{ instanceId: "xbar_0", portId: "m_valid" }]
+            },
+            {
+              id: "net_xbar_ready",
+              name: "xbar_ready",
+              width: 1,
+              source: { instanceId: "xbar_0", portId: "m_ready" },
+              targets: [{ instanceId: "pulp_core", portId: "mem_ready" }]
+            },
+            {
+              id: "net_xbar_rdata",
+              name: "xbar_rdata",
+              width: 32,
+              source: { instanceId: "xbar_0", portId: "m_rdata" },
+              targets: [{ instanceId: "pulp_core", portId: "mem_rdata" }]
+            },
+            {
+              id: "net_ram_addr",
+              name: "ram_addr",
+              width: 32,
+              source: { instanceId: "xbar_0", portId: "s0_addr" },
+              targets: [{ instanceId: "l2_sram", portId: "addr" }]
+            },
+            {
+              id: "net_ram_valid",
+              name: "ram_en",
+              width: 1,
+              source: { instanceId: "xbar_0", portId: "s0_valid" },
+              targets: [{ instanceId: "l2_sram", portId: "en" }]
+            },
+            {
+              id: "net_ram_dout",
+              name: "ram_dout",
+              width: 32,
+              source: { instanceId: "l2_sram", portId: "dout" },
+              targets: [{ instanceId: "xbar_0", portId: "s0_rdata" }]
+            },
+            {
+              id: "net_spi_rx_to_i2c",
+              name: "spi_rx_to_i2c_din",
+              width: 8,
+              source: { instanceId: "spi_host", portId: "rx_data" },
+              targets: [{ instanceId: "i2c_sensor", portId: "din" }]
+            },
+            {
+              id: "net_spi_rx_valid",
+              name: "spi_rx_strobe",
+              width: 1,
+              source: { instanceId: "spi_host", portId: "rx_valid" },
+              targets: [{ instanceId: "i2c_sensor", portId: "start" }]
+            }
+          ]
+        })
+      },
+      {
+        id: "litex_wishbone",
+        name: "LiteX Wishbone SoC (Fomu / Betrusted)",
+        description: "Industry-standard open-source FPGA SoC ecosystem featuring Wishbone B4 crossbar, RISC-V core, Block RAM, SPI Flash controller, and LiteUART",
+        createDesign: () => ({
+          version: "1.0",
+          name: "LiteX Wishbone SoC",
+          topModule: "top",
+          metadata: {
+            version: "1.0",
+            created: (/* @__PURE__ */ new Date()).toISOString(),
+            modified: (/* @__PURE__ */ new Date()).toISOString(),
+            description: "LiteX FPGA System-on-Chip with Wishbone bus, PicoRV32, SPI Flash, and UART transceiver"
+          },
+          instances: [
+            {
+              id: "clk_gen_0",
+              moduleId: "clock_gen",
+              name: "u_clk_gen",
+              position: { x: 60, y: 140 },
+              parameters: { FREQ_MHZ: 50 }
+            },
+            {
+              id: "litex_cpu",
+              moduleId: "picorv32",
+              name: "u_litex_cpu",
+              position: { x: 320, y: 100 },
+              parameters: { ENABLE_COUNTERS: true, ENABLE_MUL: true, ENABLE_DIV: true, BARREL_SHIFTER: true, STACKADDR: 65536 }
+            },
+            {
+              id: "wb_xbar",
+              moduleId: "wishbone_crossbar",
+              name: "u_wb_xbar",
+              position: { x: 680, y: 100 },
+              parameters: { S0_BASE_ADDR: 0, S1_BASE_ADDR: 268435456 }
+            },
+            {
+              id: "wb_ram",
+              moduleId: "ram_dual_port",
+              name: "u_wb_ram",
+              position: { x: 1040, y: 60 },
+              parameters: { ADDR_WIDTH: 14, DATA_WIDTH: 32 }
+            },
+            {
+              id: "spi_flash",
+              moduleId: "spi_controller",
+              name: "u_spi_flash",
+              position: { x: 1040, y: 340 },
+              parameters: { CLK_DIV: 8, DATA_WIDTH: 8 }
+            },
+            {
+              id: "lite_uart",
+              moduleId: "uart_core",
+              name: "u_lite_uart",
+              position: { x: 1040, y: 620 },
+              parameters: { BAUD_DIVISOR: 434 }
+            }
+          ],
+          nets: [
+            {
+              id: "net_clk",
+              name: "clk",
+              width: 1,
+              source: { instanceId: "clk_gen_0", portId: "clk_out" },
+              targets: [
+                { instanceId: "litex_cpu", portId: "clk" },
+                { instanceId: "wb_xbar", portId: "clk" },
+                { instanceId: "wb_ram", portId: "clk" },
+                { instanceId: "spi_flash", portId: "clk" },
+                { instanceId: "lite_uart", portId: "clk" }
+              ]
+            },
+            {
+              id: "net_rst_n",
+              name: "rst_n",
+              width: 1,
+              source: { instanceId: "clk_gen_0", portId: "rst_n_out" },
+              targets: [
+                { instanceId: "litex_cpu", portId: "resetn" },
+                { instanceId: "wb_xbar", portId: "rst_n" },
+                { instanceId: "spi_flash", portId: "rst_n" },
+                { instanceId: "lite_uart", portId: "rst_n" }
+              ]
+            },
+            {
+              id: "net_wb_adr",
+              name: "wb_adr",
+              width: 32,
+              source: { instanceId: "litex_cpu", portId: "mem_addr" },
+              targets: [{ instanceId: "wb_xbar", portId: "wb_adr_i" }]
+            },
+            {
+              id: "net_wb_stb",
+              name: "wb_stb",
+              width: 1,
+              source: { instanceId: "litex_cpu", portId: "mem_valid" },
+              targets: [
+                { instanceId: "wb_xbar", portId: "wb_cyc_i" },
+                { instanceId: "wb_xbar", portId: "wb_stb_i" }
+              ]
+            },
+            {
+              id: "net_wb_rdata",
+              name: "wb_rdata",
+              width: 32,
+              source: { instanceId: "wb_xbar", portId: "wb_dat_o" },
+              targets: [{ instanceId: "litex_cpu", portId: "mem_rdata" }]
+            },
+            {
+              id: "net_wb_ack",
+              name: "wb_ack",
+              width: 1,
+              source: { instanceId: "wb_xbar", portId: "wb_ack_o" },
+              targets: [{ instanceId: "litex_cpu", portId: "mem_ready" }]
+            },
+            {
+              id: "net_s0_adr",
+              name: "s0_adr",
+              width: 32,
+              source: { instanceId: "wb_xbar", portId: "s0_adr_o" },
+              targets: [{ instanceId: "wb_ram", portId: "addr" }]
+            },
+            {
+              id: "net_s0_stb",
+              name: "s0_en",
+              width: 1,
+              source: { instanceId: "wb_xbar", portId: "s0_stb_o" },
+              targets: [{ instanceId: "wb_ram", portId: "en" }]
+            },
+            {
+              id: "net_s0_dat",
+              name: "s0_dout",
+              width: 32,
+              source: { instanceId: "wb_ram", portId: "dout" },
+              targets: [{ instanceId: "wb_xbar", portId: "s0_dat_i" }]
+            },
+            {
+              id: "net_uart_to_flash",
+              name: "uart_to_spi_tx",
+              width: 8,
+              source: { instanceId: "lite_uart", portId: "rx_data" },
+              targets: [{ instanceId: "spi_flash", portId: "tx_data" }]
+            },
+            {
+              id: "net_uart_to_flash_valid",
+              name: "uart_to_spi_valid",
+              width: 1,
+              source: { instanceId: "lite_uart", portId: "rx_valid" },
+              targets: [{ instanceId: "spi_flash", portId: "tx_valid" }]
+            }
+          ]
+        })
+      },
+      {
+        id: "sensor_hub",
+        name: "TinyFPGA BX Industrial Sensor Hub & Telemetry Engine",
+        description: "Real-world FPGA sensor fusion pipeline with hardware clock divider, I2C telemetry master, FIFO queue buffer, GPIO indicator pads, and UART downlink",
+        createDesign: () => ({
+          version: "1.0",
+          name: "Industrial Sensor Hub",
+          topModule: "top",
+          metadata: {
+            version: "1.0",
+            created: (/* @__PURE__ */ new Date()).toISOString(),
+            modified: (/* @__PURE__ */ new Date()).toISOString(),
+            description: "FPGA sensor hub pipeline with I2C master, synchronous FIFO telemetry queue, GPIO pads, and UART downlink"
+          },
+          instances: [
+            {
+              id: "master_clk",
+              moduleId: "clock_gen",
+              name: "u_clk_gen",
+              position: { x: 60, y: 140 },
+              parameters: { FREQ_MHZ: 50 }
+            },
+            {
+              id: "clk_div",
+              moduleId: "clock_divider",
+              name: "u_clk_div",
+              position: { x: 320, y: 140 },
+              parameters: { DIVISOR: 4 }
+            },
+            {
+              id: "i2c_sensor",
+              moduleId: "i2c_controller",
+              name: "u_i2c_sensor",
+              position: { x: 320, y: 380 },
+              parameters: { PRESCALE: 125 }
+            },
+            {
+              id: "telem_fifo",
+              moduleId: "sync_fifo",
+              name: "u_telem_fifo",
+              position: { x: 660, y: 360 },
+              parameters: { WIDTH: 8, DEPTH: 32 }
+            },
+            {
+              id: "uart_downlink",
+              moduleId: "uart_core",
+              name: "u_uart_downlink",
+              position: { x: 1e3, y: 340 },
+              parameters: { BAUD_DIVISOR: 434 }
+            },
+            {
+              id: "status_gpio",
+              moduleId: "gpio_controller",
+              name: "u_status_gpio",
+              position: { x: 1e3, y: 100 },
+              parameters: { WIDTH: 8 }
+            }
+          ],
+          nets: [
+            {
+              id: "net_mclk",
+              name: "clk",
+              width: 1,
+              source: { instanceId: "master_clk", portId: "clk_out" },
+              targets: [
+                { instanceId: "clk_div", portId: "clk_in" },
+                { instanceId: "telem_fifo", portId: "clk" },
+                { instanceId: "uart_downlink", portId: "clk" },
+                { instanceId: "status_gpio", portId: "clk" }
+              ]
+            },
+            {
+              id: "net_mrst",
+              name: "rst_n",
+              width: 1,
+              source: { instanceId: "master_clk", portId: "rst_n_out" },
+              targets: [
+                { instanceId: "clk_div", portId: "rst_n" },
+                { instanceId: "i2c_sensor", portId: "rst_n" },
+                { instanceId: "telem_fifo", portId: "rst_n" },
+                { instanceId: "uart_downlink", portId: "rst_n" },
+                { instanceId: "status_gpio", portId: "rst_n" }
+              ]
+            },
+            {
+              id: "net_div_clk",
+              name: "divided_clk",
+              width: 1,
+              source: { instanceId: "clk_div", portId: "clk_out" },
+              targets: [{ instanceId: "i2c_sensor", portId: "clk" }]
+            },
+            {
+              id: "net_sensor_data",
+              name: "sensor_dout_to_fifo",
+              width: 8,
+              source: { instanceId: "i2c_sensor", portId: "dout" },
+              targets: [{ instanceId: "telem_fifo", portId: "din" }]
+            },
+            {
+              id: "net_sensor_busy_wr",
+              name: "sensor_busy_to_wr",
+              width: 1,
+              source: { instanceId: "i2c_sensor", portId: "busy" },
+              targets: [{ instanceId: "telem_fifo", portId: "wr_en" }]
+            },
+            {
+              id: "net_fifo_dout",
+              name: "fifo_data_bus",
+              width: 8,
+              source: { instanceId: "telem_fifo", portId: "dout" },
+              targets: [
+                { instanceId: "uart_downlink", portId: "tx_data" },
+                { instanceId: "status_gpio", portId: "out_val" }
+              ]
+            },
+            {
+              id: "net_fifo_empty_to_tx_valid",
+              name: "fifo_not_empty_strobe",
+              width: 1,
+              source: { instanceId: "telem_fifo", portId: "empty" },
+              targets: [{ instanceId: "uart_downlink", portId: "tx_valid" }]
+            }
+          ]
+        })
       }
     ];
   }
@@ -545,6 +1273,11 @@ var require_drc = __commonJS({
       if ((modDef.id === "sync_fifo" || modDef.id === "gpio_controller") && typeof inst.parameters["WIDTH"] === "number") {
         if (["din", "dout", "gpio_pins", "in_val", "out_val"].includes(port.id)) {
           return inst.parameters["WIDTH"];
+        }
+      }
+      if (modDef.id === "spi_controller" && typeof inst.parameters["DATA_WIDTH"] === "number") {
+        if (["tx_data", "rx_data"].includes(port.id)) {
+          return inst.parameters["DATA_WIDTH"];
         }
       }
       return port.width;
@@ -1093,16 +1826,25 @@ var SchematicCanvas = class {
     this.ctx.resetTransform?.();
     this.render();
   }
+  updateZoomLabel() {
+    const label = document.getElementById("btn-zoom-reset");
+    if (label) {
+      label.textContent = `${Math.round(this.transform.scale * 100)}%`;
+    }
+  }
   zoomIn() {
     this.transform.scale = Math.min(3, this.transform.scale * 1.2);
+    this.updateZoomLabel();
     this.render();
   }
   zoomOut() {
     this.transform.scale = Math.max(0.3, this.transform.scale / 1.2);
+    this.updateZoomLabel();
     this.render();
   }
   resetZoom() {
     this.transform = { x: 60, y: 60, scale: 1 };
+    this.updateZoomLabel();
     this.render();
   }
   deleteSelected() {
@@ -1238,6 +1980,7 @@ var SchematicCanvas = class {
       this.transform.x = mouse.x - (mouse.x - this.transform.x) * (newScale / this.transform.scale);
       this.transform.y = mouse.y - (mouse.y - this.transform.y) * (newScale / this.transform.scale);
       this.transform.scale = newScale;
+      this.updateZoomLabel();
       this.render();
     });
     this.canvas.addEventListener("mousedown", (e) => {
@@ -1387,7 +2130,7 @@ var SchematicCanvas = class {
     const h = this.canvas.height / dpr;
     ctx.save();
     ctx.scale(dpr, dpr);
-    ctx.fillStyle = "#0f172a";
+    ctx.fillStyle = "#111318";
     ctx.fillRect(0, 0, w, h);
     ctx.translate(this.transform.x, this.transform.y);
     ctx.scale(this.transform.scale, this.transform.scale);
@@ -1407,7 +2150,7 @@ var SchematicCanvas = class {
     const maxX = Math.ceil(end.x / gridSize) * gridSize;
     const minY = Math.floor(start.y / gridSize) * gridSize;
     const maxY = Math.ceil(end.y / gridSize) * gridSize;
-    ctx.fillStyle = "#1e293b";
+    ctx.fillStyle = "#272c38";
     for (let x = minX; x <= maxX; x += gridSize) {
       for (let y = minY; y <= maxY; y += gridSize) {
         ctx.fillRect(x - 1, y - 1, 2, 2);
@@ -1439,8 +2182,15 @@ var SchematicCanvas = class {
     ctx.lineTo(midX, src.y);
     ctx.lineTo(midX, tgt.y);
     ctx.lineTo(tgt.x, tgt.y);
-    ctx.strokeStyle = isSelected ? "#38bdf8" : isBus ? "#38bdf8" : "#94a3b8";
-    ctx.lineWidth = isBus ? isSelected ? 4 : 3 : isSelected ? 2.5 : 1.5;
+    if (isSelected) {
+      ctx.shadowColor = "#a8c7fa";
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = "#a8c7fa";
+      ctx.lineWidth = isBus ? 4.5 : 3;
+    } else {
+      ctx.strokeStyle = isBus ? "#7fcfff" : "#8e919a";
+      ctx.lineWidth = isBus ? 3 : 1.75;
+    }
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.stroke();
@@ -1448,14 +2198,25 @@ var SchematicCanvas = class {
       const slashX = midX;
       const slashY = (src.y + tgt.y) / 2;
       ctx.beginPath();
-      ctx.moveTo(slashX - 4, slashY + 6);
-      ctx.lineTo(slashX + 4, slashY - 6);
-      ctx.strokeStyle = "#38bdf8";
+      ctx.moveTo(slashX - 4, slashY + 5);
+      ctx.lineTo(slashX + 4, slashY - 5);
+      ctx.strokeStyle = "#7fcfff";
       ctx.lineWidth = 1.5;
       ctx.stroke();
-      ctx.fillStyle = "#bae6fd";
-      ctx.font = "10px monospace";
-      ctx.fillText(`${width}`, slashX + 6, slashY - 2);
+      const widthLabel = `[${width - 1}:0]`;
+      ctx.font = '9px "Roboto Mono", monospace';
+      const textWidth = ctx.measureText(widthLabel).width;
+      const pillW = textWidth + 8;
+      const pillH = 14;
+      ctx.fillStyle = "#0842a0";
+      ctx.strokeStyle = "#7fcfff";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(slashX + 7, slashY - 8, pillW, pillH, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#d3e3fd";
+      ctx.fillText(widthLabel, slashX + 11, slashY + 3);
     }
     ctx.restore();
   }
@@ -1467,9 +2228,9 @@ var SchematicCanvas = class {
     ctx.lineTo(midX, src.y);
     ctx.lineTo(midX, current.y);
     ctx.lineTo(current.x, current.y);
-    let color = "#38bdf8";
+    let color = "#a8c7fa";
     if (targetPort) {
-      color = targetPort.width === src.width ? "#10b981" : "#ef4444";
+      color = targetPort.width === src.width ? "#6dd58c" : "#f2b8b5";
     }
     ctx.strokeStyle = color;
     ctx.lineWidth = 2.5;
@@ -1484,27 +2245,38 @@ var SchematicCanvas = class {
       const w = modDef?.defaultWidth || 200;
       const h = modDef?.defaultHeight || 200;
       ctx.save();
-      ctx.shadowColor = isSelected ? "rgba(56, 189, 248, 0.35)" : "rgba(0, 0, 0, 0.4)";
-      ctx.shadowBlur = isSelected ? 16 : 8;
+      ctx.shadowColor = isSelected ? "rgba(168, 199, 250, 0.4)" : "rgba(0, 0, 0, 0.45)";
+      ctx.shadowBlur = isSelected ? 18 : 8;
       ctx.shadowOffsetY = 4;
-      ctx.fillStyle = "#1e293b";
+      ctx.fillStyle = "#1a1d26";
       ctx.beginPath();
-      ctx.roundRect(inst.position.x, inst.position.y, w, h, 8);
+      ctx.roundRect(inst.position.x, inst.position.y, w, h, 12);
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = isSelected ? "#38bdf8" : "#334155";
+      ctx.strokeStyle = isSelected ? "#a8c7fa" : "#272c38";
       ctx.lineWidth = isSelected ? 2 : 1;
       ctx.stroke();
       ctx.fillStyle = this.getCategoryColor(modDef?.category || "infrastructure");
       ctx.beginPath();
-      ctx.roundRect(inst.position.x, inst.position.y, w, 28, [8, 8, 0, 0]);
+      ctx.roundRect(inst.position.x, inst.position.y, w, 32, [12, 12, 0, 0]);
       ctx.fill();
       ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 12px system-ui, -apple-system, sans-serif";
-      ctx.fillText(inst.name, inst.position.x + 10, inst.position.y + 18);
-      ctx.fillStyle = "#cbd5e1";
-      ctx.font = "10px system-ui, -apple-system, sans-serif";
-      ctx.fillText(modDef?.name || inst.moduleId, inst.position.x + 10, inst.position.y + 44);
+      ctx.font = 'bold 13px "Google Sans", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.fillText(inst.name, inst.position.x + 12, inst.position.y + 20);
+      if (modDef?.category) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+        const catText = modDef.category.toUpperCase();
+        ctx.font = 'bold 8px "Google Sans", "Roboto", sans-serif';
+        const catW = ctx.measureText(catText).width;
+        ctx.beginPath();
+        ctx.roundRect(inst.position.x + w - catW - 16, inst.position.y + 8, catW + 10, 16, 6);
+        ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(catText, inst.position.x + w - catW - 11, inst.position.y + 19);
+      }
+      ctx.fillStyle = "#8e919a";
+      ctx.font = '10px "Roboto Mono", monospace';
+      ctx.fillText(modDef?.name || inst.moduleId, inst.position.x + 12, inst.position.y + 48);
       if (modDef) {
         const inputPorts = modDef.ports.filter((p) => p.direction === "input");
         const outputPorts = modDef.ports.filter((p) => p.direction === "output");
@@ -1539,8 +2311,8 @@ var SchematicCanvas = class {
     const isHovered = this.hoveredPort?.portId === port.id && this.hoveredPort?.x === x && this.hoveredPort?.y === y;
     if (isHovered) {
       ctx.beginPath();
-      ctx.arc(x, y, 9, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(56, 189, 248, 0.3)";
+      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(168, 199, 250, 0.25)";
       ctx.fill();
     }
     ctx.beginPath();
@@ -1550,8 +2322,8 @@ var SchematicCanvas = class {
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = isBus ? 1.5 : 1;
     ctx.stroke();
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = "11px monospace";
+    ctx.fillStyle = "#c4c6d0";
+    ctx.font = '11px "Roboto Mono", monospace';
     const label = isBus ? `${port.name}[${width - 1}:0]` : port.name;
     if (align === "left") {
       ctx.textAlign = "left";
@@ -1567,40 +2339,40 @@ var SchematicCanvas = class {
   getCategoryColor(category) {
     switch (category) {
       case "processor":
-        return "#4f46e5";
-      // Indigo
+        return "#0842a0";
+      // Primary Container
       case "interconnect":
-        return "#7c3aed";
-      // Purple
+        return "#4f378b";
+      // Tertiary Container
       case "memory":
-        return "#db2777";
-      // Pink
+        return "#601410";
+      // Dark Crimson Container
       case "peripheral":
-        return "#0284c7";
-      // Blue
+        return "#004d67";
+      // Secondary Container
       case "infrastructure":
-        return "#059669";
-      // Emerald
+        return "#0a5223";
+      // Success Container
       default:
-        return "#475569";
+        return "#272c38";
     }
   }
   getPortTypeColor(type) {
     switch (type) {
       case "clock":
-        return "#c084fc";
-      // Purple
+        return "#d0bcff";
+      // Tertiary
       case "reset":
-        return "#fbbf24";
-      // Amber
+        return "#fbc02d";
+      // Warning
       case "bus":
-        return "#38bdf8";
-      // Cyan
+        return "#7fcfff";
+      // Secondary
       case "data":
-        return "#34d399";
-      // Green
+        return "#6dd58c";
+      // Success
       default:
-        return "#94a3b8";
+        return "#8e919a";
     }
   }
 };
@@ -1710,11 +2482,11 @@ var WaveformViewer = class {
   }
   render() {
     if (!this.trace) {
-      this.ctx.fillStyle = "#0f172a";
+      this.ctx.fillStyle = "#111318";
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-      this.ctx.fillStyle = "#64748b";
-      this.ctx.font = "14px system-ui";
-      this.ctx.fillText('No simulation trace loaded. Click "Run Local Wasm Sim" to simulate.', 24, 40);
+      this.ctx.fillStyle = "#8e919a";
+      this.ctx.font = '13px "Google Sans", "Roboto", sans-serif';
+      this.ctx.fillText('No simulation trace loaded. Click "Run Simulation" above to execute Wasm simulation.', 24, 40);
       return;
     }
     const dpr = window.devicePixelRatio || 1;
@@ -1724,7 +2496,7 @@ var WaveformViewer = class {
     const headerHeight = 28;
     this.ctx.save();
     this.ctx.scale(dpr, dpr);
-    this.ctx.fillStyle = "#0f172a";
+    this.ctx.fillStyle = "#111318";
     this.ctx.fillRect(0, 0, w, h);
     this.updateSidebar();
     this.drawTimelineHeader(w, headerHeight);
@@ -1736,7 +2508,7 @@ var WaveformViewer = class {
     }
     if (this.cursorTime !== null) {
       const cursorX = this.panOffset + this.cursorTime * this.zoom;
-      this.ctx.strokeStyle = "#f43f5e";
+      this.ctx.strokeStyle = "#f2b8b5";
       this.ctx.lineWidth = 1.5;
       this.ctx.setLineDash([3, 3]);
       this.ctx.beginPath();
@@ -1750,9 +2522,9 @@ var WaveformViewer = class {
     this.ctx.restore();
   }
   drawTimelineHeader(w, headerH) {
-    this.ctx.fillStyle = "#1e293b";
+    this.ctx.fillStyle = "#1a1d26";
     this.ctx.fillRect(0, 0, w, headerH);
-    this.ctx.strokeStyle = "#334155";
+    this.ctx.strokeStyle = "#44474f";
     this.ctx.beginPath();
     this.ctx.moveTo(0, headerH);
     this.ctx.lineTo(w, headerH);
@@ -1760,21 +2532,21 @@ var WaveformViewer = class {
     if (!this.trace) return;
     const maxT = this.trace.maxTime || 100;
     const tickStep = Math.max(5, Math.pow(10, Math.floor(Math.log10(maxT / 5))));
-    this.ctx.fillStyle = "#94a3b8";
-    this.ctx.font = "10px monospace";
+    this.ctx.fillStyle = "#8e919a";
+    this.ctx.font = '10px "Roboto Mono", monospace';
     for (let t = 0; t <= maxT; t += tickStep) {
       const x = this.panOffset + t * this.zoom;
       if (x < 0 || x > w) continue;
       this.ctx.beginPath();
       this.ctx.moveTo(x, headerH - 6);
       this.ctx.lineTo(x, headerH);
-      this.ctx.strokeStyle = "#475569";
+      this.ctx.strokeStyle = "#44474f";
       this.ctx.stroke();
       this.ctx.fillText(`${t}ns`, x + 3, headerH - 8);
     }
   }
   drawSignalRow(y, rowH, width, changes, canvasW) {
-    this.ctx.strokeStyle = "#1e293b";
+    this.ctx.strokeStyle = "#20242f";
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
     this.ctx.moveTo(0, y + rowH);
@@ -1784,7 +2556,7 @@ var WaveformViewer = class {
     const lowY = y + rowH - 8;
     const midY = (highY + lowY) / 2;
     if (width === 1) {
-      this.ctx.strokeStyle = "#38bdf8";
+      this.ctx.strokeStyle = "#7fcfff";
       this.ctx.lineWidth = 2;
       this.ctx.beginPath();
       let currentVal = "0";
@@ -1806,8 +2578,8 @@ var WaveformViewer = class {
       }
       this.ctx.stroke();
     } else {
-      this.ctx.strokeStyle = "#a855f7";
-      this.ctx.fillStyle = "#2e1065";
+      this.ctx.strokeStyle = "#7fcfff";
+      this.ctx.fillStyle = "#004d67";
       this.ctx.lineWidth = 1.5;
       let prevX = this.panOffset;
       let prevVal = "0";
@@ -1827,8 +2599,8 @@ var WaveformViewer = class {
           this.ctx.stroke();
           const formatted = (0, import_vcd.formatSignalValue)(prevVal, width, this.radix);
           if (nextX - prevX > 28) {
-            this.ctx.fillStyle = "#e9d5ff";
-            this.ctx.font = "10px monospace";
+            this.ctx.fillStyle = "#c2e7ff";
+            this.ctx.font = '10px "Roboto Mono", monospace';
             this.ctx.fillText(formatted, prevX + 6, midY + 3);
           }
         }
@@ -1848,8 +2620,8 @@ var WaveformViewer = class {
           this.ctx.fill();
           this.ctx.stroke();
           const formatted = (0, import_vcd.formatSignalValue)(prevVal, width, this.radix);
-          this.ctx.fillStyle = "#e9d5ff";
-          this.ctx.font = "10px monospace";
+          this.ctx.fillStyle = "#c2e7ff";
+          this.ctx.font = '10px "Roboto Mono", monospace';
           this.ctx.fillText(formatted, prevX + 6, midY + 3);
         }
       }
@@ -1917,6 +2689,11 @@ var KonaApp = class {
     const svCode = (0, import_codegen.generateSystemVerilog)(this.design);
     const codeEl = document.getElementById("sv-code-output");
     if (codeEl) codeEl.textContent = svCode;
+    const lineNumbersEl = document.getElementById("code-line-numbers");
+    if (lineNumbersEl) {
+      const lineCount = svCode.split("\n").length;
+      lineNumbersEl.innerHTML = Array.from({ length: lineCount }, (_, i) => `<div>${i + 1}</div>`).join("");
+    }
     this.saveDesignToHash();
   }
   renderDrcStatus() {
@@ -1955,6 +2732,13 @@ var KonaApp = class {
     if (!this.selectedInstance) {
       container.innerHTML = `
         <div class="inspector-empty">
+          <div class="empty-graphic">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <rect x="3" y="3" width="18" height="18" rx="4" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          </div>
           <div class="empty-icon">Select a Block</div>
           <p>Click on any module on the schematic canvas to inspect its ports and tune parameters.</p>
         </div>
@@ -2069,23 +2853,69 @@ var KonaApp = class {
   setupCatalogSidebar() {
     const listEl = document.getElementById("catalog-items-list");
     if (!listEl) return;
-    listEl.innerHTML = import_catalog2.STARTER_IP_CATALOG.map((mod) => `
-      <div class="catalog-card" data-module-id="${mod.id}" title="${mod.description}">
-        <div class="catalog-card-header">
-          <span class="catalog-category-tag ${mod.category}">${mod.category}</span>
-          <span class="catalog-add-btn">+ Add</span>
-        </div>
-        <div class="catalog-card-title">${mod.name}</div>
-        <div class="catalog-card-desc">${mod.description}</div>
-      </div>
-    `).join("");
-    listEl.querySelectorAll(".catalog-card").forEach((card) => {
-      card.addEventListener("click", () => {
-        const modId = card.getAttribute("data-module-id");
-        if (modId) {
-          this.canvas.addModule(modId);
-        }
+    let activeFilter = "all";
+    let searchQuery = "";
+    const getFilteredItems = () => {
+      return import_catalog2.STARTER_IP_CATALOG.filter((m) => {
+        const matchesCategory = activeFilter === "all" || m.category === activeFilter;
+        const matchesSearch = !searchQuery || m.name.toLowerCase().includes(searchQuery) || m.description.toLowerCase().includes(searchQuery) || m.category.toLowerCase().includes(searchQuery);
+        return matchesCategory && matchesSearch;
       });
+    };
+    const renderItems = () => {
+      const items = getFilteredItems();
+      if (items.length === 0) {
+        listEl.innerHTML = `
+          <div class="catalog-empty" style="text-align:center; padding:32px 16px; color:var(--md-sys-color-outline);">
+            <p style="font-size:12px;">No matching IP modules found.</p>
+          </div>
+        `;
+      } else {
+        listEl.innerHTML = items.map((mod) => `
+          <div class="catalog-card" data-module-id="${mod.id}" title="${mod.description}">
+            <div class="catalog-card-header">
+              <span class="catalog-category-tag ${mod.category}">${mod.category}</span>
+              <span class="catalog-add-btn">+ Add</span>
+            </div>
+            <div class="catalog-card-title">${mod.name}</div>
+            <div class="catalog-card-desc">${mod.description}</div>
+          </div>
+        `).join("");
+        listEl.querySelectorAll(".catalog-card").forEach((card) => {
+          card.addEventListener("click", () => {
+            const modId = card.getAttribute("data-module-id");
+            if (modId) {
+              this.canvas.addModule(modId);
+              showToast(`Added ${modId} to canvas`, "success");
+            }
+          });
+        });
+      }
+      const countBadge = document.getElementById("catalog-count-badge");
+      if (countBadge) countBadge.textContent = `${items.length} IPs`;
+    };
+    renderItems();
+    const filterChips = document.querySelectorAll(".md-filter-chip");
+    filterChips.forEach((chip) => {
+      chip.addEventListener("click", () => {
+        filterChips.forEach((c) => c.classList.remove("active"));
+        chip.classList.add("active");
+        activeFilter = chip.getAttribute("data-filter") || "all";
+        renderItems();
+      });
+    });
+    const searchInput = document.getElementById("catalog-search-input");
+    const clearBtn = document.getElementById("catalog-search-clear");
+    searchInput?.addEventListener("input", () => {
+      searchQuery = (searchInput.value || "").toLowerCase().trim();
+      if (clearBtn) clearBtn.style.display = searchQuery ? "inline-block" : "none";
+      renderItems();
+    });
+    clearBtn?.addEventListener("click", () => {
+      if (searchInput) searchInput.value = "";
+      searchQuery = "";
+      clearBtn.style.display = "none";
+      renderItems();
     });
   }
   setupTemplatesPicker() {
@@ -2104,6 +2934,7 @@ var KonaApp = class {
         this.design = tmpl.createDesign();
         this.canvas.setDesign(this.design);
         this.onDesignUpdated();
+        showToast(`Loaded ${tmpl.name}`, "info");
       }
     });
   }
@@ -2111,24 +2942,76 @@ var KonaApp = class {
     document.getElementById("btn-zoom-in")?.addEventListener("click", () => this.canvas.zoomIn());
     document.getElementById("btn-zoom-out")?.addEventListener("click", () => this.canvas.zoomOut());
     document.getElementById("btn-zoom-reset")?.addEventListener("click", () => this.canvas.resetZoom());
+    const modalEl = document.getElementById("shortcuts-modal");
+    const openModal = () => {
+      if (modalEl) modalEl.style.display = "flex";
+    };
+    const closeModal = () => {
+      if (modalEl) modalEl.style.display = "none";
+    };
+    document.getElementById("btn-shortcuts")?.addEventListener("click", openModal);
+    document.getElementById("modal-close-btn")?.addEventListener("click", closeModal);
+    document.getElementById("modal-confirm-btn")?.addEventListener("click", closeModal);
+    modalEl?.addEventListener("click", (e) => {
+      if (e.target === modalEl) closeModal();
+    });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "?" && !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName || "")) {
+        openModal();
+      } else if (e.key === "Escape" && modalEl?.style.display === "flex") {
+        closeModal();
+      }
+    });
+    const drawerEl = document.getElementById("app-bottom-drawer");
+    const toggleDrawerBtn = document.getElementById("btn-toggle-drawer");
+    let drawerState = "normal";
+    toggleDrawerBtn?.addEventListener("click", () => {
+      if (drawerState === "normal") {
+        drawerEl?.classList.add("minimized");
+        drawerState = "minimized";
+        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
+      } else if (drawerState === "minimized") {
+        drawerEl?.classList.remove("minimized");
+        drawerEl?.classList.add("expanded");
+        drawerState = "expanded";
+        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+      } else {
+        drawerEl?.classList.remove("expanded");
+        drawerState = "normal";
+        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+      }
+      this.waveformViewer.resize();
+    });
+    const drcChip = document.getElementById("drc-status-chip");
+    const drcToggle = document.getElementById("drc-panel-toggle");
+    const drcBody = document.getElementById("drc-panel-body");
+    const toggleDrc = () => {
+      if (drcBody) {
+        drcBody.style.display = drcBody.style.display === "none" ? "flex" : "none";
+      }
+    };
+    drcChip?.addEventListener("click", toggleDrc);
+    drcToggle?.addEventListener("click", toggleDrc);
     document.getElementById("btn-export-json")?.addEventListener("click", () => {
       const json = (0, import_ir.serializeKonaDesign)(this.design);
       downloadFile(json, `${this.design.topModule || "chip"}.kona.json`, "application/json");
+      showToast("Exported .kona.json netlist", "success");
     });
     document.getElementById("btn-export-sv")?.addEventListener("click", () => {
       const sv = (0, import_codegen.generateSystemVerilog)(this.design);
       downloadFile(sv, `${this.design.topModule || "top"}.sv`, "text/plain");
+      showToast("Exported synthesizable top.sv", "success");
     });
     document.getElementById("btn-copy-sv")?.addEventListener("click", () => {
       const sv = (0, import_codegen.generateSystemVerilog)(this.design);
       navigator.clipboard.writeText(sv).then(() => {
-        alert("SystemVerilog top.sv copied to clipboard!");
+        showToast("SystemVerilog top.sv copied to clipboard!", "success");
       });
     });
     document.getElementById("btn-share-link")?.addEventListener("click", () => {
       const url = window.location.href;
       navigator.clipboard.writeText(url).then(() => {
-        alert("Shareable URL copied to clipboard!\nAnyone with this link can view and simulate this architecture.");
+        showToast("Shareable architecture link copied!", "info");
       });
     });
   }
@@ -2193,15 +3076,36 @@ function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 function downloadFile(content, filename, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
   a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } else {
+    a.href = `data:${mimeType};charset=utf-8,` + encodeURIComponent(content);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+function showToast(message, type = "info") {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(8px)";
+    toast.style.transition = "all 0.25s ease";
+    setTimeout(() => toast.remove(), 250);
+  }, 2800);
 }
 
 // apps/web/src/index.ts

@@ -6,3 +6,6 @@ build/
 *.tsbuildinfo
 *.log
 .DS_Store
+.chrome-auto-profile/
+.edge-data/
+*.png

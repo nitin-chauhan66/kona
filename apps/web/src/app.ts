@@ -79,6 +79,13 @@ export class KonaApp {
     const codeEl = document.getElementById('sv-code-output');
     if (codeEl) codeEl.textContent = svCode;
 
+    // Update Line Numbers
+    const lineNumbersEl = document.getElementById('code-line-numbers');
+    if (lineNumbersEl) {
+      const lineCount = svCode.split('\n').length;
+      lineNumbersEl.innerHTML = Array.from({ length: lineCount }, (_, i) => `<div>${i + 1}</div>`).join('');
+    }
+
     // Save to URL hash for shareable links
     this.saveDesignToHash();
   }
@@ -123,6 +130,13 @@ export class KonaApp {
     if (!this.selectedInstance) {
       container.innerHTML = `
         <div class="inspector-empty">
+          <div class="empty-graphic">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <rect x="3" y="3" width="18" height="18" rx="4" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          </div>
           <div class="empty-icon">Select a Block</div>
           <p>Click on any module on the schematic canvas to inspect its ports and tune parameters.</p>
         </div>
@@ -255,24 +269,83 @@ export class KonaApp {
     const listEl = document.getElementById('catalog-items-list');
     if (!listEl) return;
 
-    listEl.innerHTML = STARTER_IP_CATALOG.map(mod => `
-      <div class="catalog-card" data-module-id="${mod.id}" title="${mod.description}">
-        <div class="catalog-card-header">
-          <span class="catalog-category-tag ${mod.category}">${mod.category}</span>
-          <span class="catalog-add-btn">+ Add</span>
-        </div>
-        <div class="catalog-card-title">${mod.name}</div>
-        <div class="catalog-card-desc">${mod.description}</div>
-      </div>
-    `).join('');
+    let activeFilter = 'all';
+    let searchQuery = '';
 
-    listEl.querySelectorAll('.catalog-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const modId = card.getAttribute('data-module-id');
-        if (modId) {
-          this.canvas.addModule(modId);
-        }
+    const getFilteredItems = () => {
+      return STARTER_IP_CATALOG.filter(m => {
+        const matchesCategory = activeFilter === 'all' || m.category === activeFilter;
+        const matchesSearch = !searchQuery ||
+          m.name.toLowerCase().includes(searchQuery) ||
+          m.description.toLowerCase().includes(searchQuery) ||
+          m.category.toLowerCase().includes(searchQuery);
+        return matchesCategory && matchesSearch;
       });
+    };
+
+    const renderItems = () => {
+      const items = getFilteredItems();
+      if (items.length === 0) {
+        listEl.innerHTML = `
+          <div class="catalog-empty" style="text-align:center; padding:32px 16px; color:var(--md-sys-color-outline);">
+            <p style="font-size:12px;">No matching IP modules found.</p>
+          </div>
+        `;
+      } else {
+        listEl.innerHTML = items.map(mod => `
+          <div class="catalog-card" data-module-id="${mod.id}" title="${mod.description}">
+            <div class="catalog-card-header">
+              <span class="catalog-category-tag ${mod.category}">${mod.category}</span>
+              <span class="catalog-add-btn">+ Add</span>
+            </div>
+            <div class="catalog-card-title">${mod.name}</div>
+            <div class="catalog-card-desc">${mod.description}</div>
+          </div>
+        `).join('');
+
+        listEl.querySelectorAll('.catalog-card').forEach(card => {
+          card.addEventListener('click', () => {
+            const modId = card.getAttribute('data-module-id');
+            if (modId) {
+              this.canvas.addModule(modId);
+              showToast(`Added ${modId} to canvas`, 'success');
+            }
+          });
+        });
+      }
+
+      const countBadge = document.getElementById('catalog-count-badge');
+      if (countBadge) countBadge.textContent = `${items.length} IPs`;
+    };
+
+    renderItems();
+
+    // M3 Filter Chips
+    const filterChips = document.querySelectorAll('.md-filter-chip');
+    filterChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        filterChips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        activeFilter = chip.getAttribute('data-filter') || 'all';
+        renderItems();
+      });
+    });
+
+    // Live Search Filter & Clear button
+    const searchInput = document.getElementById('catalog-search-input') as HTMLInputElement;
+    const clearBtn = document.getElementById('catalog-search-clear');
+
+    searchInput?.addEventListener('input', () => {
+      searchQuery = (searchInput.value || '').toLowerCase().trim();
+      if (clearBtn) clearBtn.style.display = searchQuery ? 'inline-block' : 'none';
+      renderItems();
+    });
+
+    clearBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      searchQuery = '';
+      clearBtn.style.display = 'none';
+      renderItems();
     });
   }
 
@@ -294,6 +367,7 @@ export class KonaApp {
         this.design = tmpl.createDesign();
         this.canvas.setDesign(this.design);
         this.onDesignUpdated();
+        showToast(`Loaded ${tmpl.name}`, 'info');
       }
     });
   }
@@ -304,23 +378,78 @@ export class KonaApp {
     document.getElementById('btn-zoom-out')?.addEventListener('click', () => this.canvas.zoomOut());
     document.getElementById('btn-zoom-reset')?.addEventListener('click', () => this.canvas.resetZoom());
 
+    // Shortcuts modal
+    const modalEl = document.getElementById('shortcuts-modal');
+    const openModal = () => { if (modalEl) modalEl.style.display = 'flex'; };
+    const closeModal = () => { if (modalEl) modalEl.style.display = 'none'; };
+    document.getElementById('btn-shortcuts')?.addEventListener('click', openModal);
+    document.getElementById('modal-close-btn')?.addEventListener('click', closeModal);
+    document.getElementById('modal-confirm-btn')?.addEventListener('click', closeModal);
+    modalEl?.addEventListener('click', (e) => {
+      if (e.target === modalEl) closeModal();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === '?' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '')) {
+        openModal();
+      } else if (e.key === 'Escape' && modalEl?.style.display === 'flex') {
+        closeModal();
+      }
+    });
+
+    // Drawer height toggle (minimize / expand)
+    const drawerEl = document.getElementById('app-bottom-drawer');
+    const toggleDrawerBtn = document.getElementById('btn-toggle-drawer');
+    let drawerState: 'normal' | 'minimized' | 'expanded' = 'normal';
+
+    toggleDrawerBtn?.addEventListener('click', () => {
+      if (drawerState === 'normal') {
+        drawerEl?.classList.add('minimized');
+        drawerState = 'minimized';
+        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
+      } else if (drawerState === 'minimized') {
+        drawerEl?.classList.remove('minimized');
+        drawerEl?.classList.add('expanded');
+        drawerState = 'expanded';
+        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+      } else {
+        drawerEl?.classList.remove('expanded');
+        drawerState = 'normal';
+        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+      }
+      this.waveformViewer.resize();
+    });
+
+    // DRC Diagnostics Panel toggle
+    const drcChip = document.getElementById('drc-status-chip');
+    const drcToggle = document.getElementById('drc-panel-toggle');
+    const drcBody = document.getElementById('drc-panel-body');
+    const toggleDrc = () => {
+      if (drcBody) {
+        drcBody.style.display = drcBody.style.display === 'none' ? 'flex' : 'none';
+      }
+    };
+    drcChip?.addEventListener('click', toggleDrc);
+    drcToggle?.addEventListener('click', toggleDrc);
+
     // Export .kona.json
     document.getElementById('btn-export-json')?.addEventListener('click', () => {
       const json = serializeKonaDesign(this.design);
       downloadFile(json, `${this.design.topModule || 'chip'}.kona.json`, 'application/json');
+      showToast('Exported .kona.json netlist', 'success');
     });
 
     // Export top.sv
     document.getElementById('btn-export-sv')?.addEventListener('click', () => {
       const sv = generateSystemVerilog(this.design);
       downloadFile(sv, `${this.design.topModule || 'top'}.sv`, 'text/plain');
+      showToast('Exported synthesizable top.sv', 'success');
     });
 
     // Copy top.sv
     document.getElementById('btn-copy-sv')?.addEventListener('click', () => {
       const sv = generateSystemVerilog(this.design);
       navigator.clipboard.writeText(sv).then(() => {
-        alert('SystemVerilog top.sv copied to clipboard!');
+        showToast('SystemVerilog top.sv copied to clipboard!', 'success');
       });
     });
 
@@ -328,7 +457,7 @@ export class KonaApp {
     document.getElementById('btn-share-link')?.addEventListener('click', () => {
       const url = window.location.href;
       navigator.clipboard.writeText(url).then(() => {
-        alert('Shareable URL copied to clipboard!\nAnyone with this link can view and simulate this architecture.');
+        showToast('Shareable architecture link copied!', 'info');
       });
     });
   }
@@ -408,13 +537,38 @@ function escapeHtml(str: string): string {
 }
 
 function downloadFile(content: string, filename: string, mimeType: string): void {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
   a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+
+  if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } else {
+    a.href = `data:${mimeType};charset=utf-8,` + encodeURIComponent(content);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+
+function showToast(message: string, type: 'success' | 'info' | 'warning' = 'info'): void {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(8px)';
+    toast.style.transition = 'all 0.25s ease';
+    setTimeout(() => toast.remove(), 250);
+  }, 2800);
 }

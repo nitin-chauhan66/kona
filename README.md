@@ -10,11 +10,15 @@ Visually assemble digital architectures, validate buses & Design Rules (DRC) in 
 
 - **Infinite 2D Schematic Canvas**: 60 FPS pan, zoom, grid snap, multi-select, and orthogonal auto-routing with color-coded ports (Inputs, Outputs, Inouts, Clocks, Resets).
 - **Real-Time Bus & DRC Validation**: Single-bit and multi-bit buses (`[31:0]`), live bit-width mismatch detection, multi-driver conflict checks, and unconnected clock/reset warnings.
-- **Starter IP & Template Library**: Parameterized open-source blocks:
-  - PicoRV32 / Ibex RISC-V cores
-  - AXI-Lite / Wishbone interconnect crossbars
-  - Peripherals: UART, SPI, I2C, GPIO
-  - Infrastructure: Synchronous FIFO, Clock Divider, Dual-port Block RAM
+- **Starter IP & Template Library**: Parameterized open-source blocks & real-world architectures:
+  - **Prebuilt Open-Source Systems**:
+    - **OpenTitan Silicon Root-of-Trust (Google / lowRISC)**: Ibex RV32IMC core, AXI-Lite crossbar, secure SRAM, 32-bit hardware timer, and UART.
+    - **PULPissimo Edge AI & IoT SoC (ETH Zürich / UniBo)**: Taped-out silicon RISC-V SoC with AXI-Lite crossbar, multi-bank SRAM, SPI master, and I2C sensor bus.
+    - **LiteX Wishbone SoC (Fomu / Betrusted)**: FPGA SoC standard with Wishbone B4 interconnect, Block RAM, SPI Flash controller, and LiteUART.
+    - **TinyFPGA BX Industrial Sensor Hub**: FPGA telemetry pipeline with clock divider, I2C sensor controller, synchronous FIFO queue, GPIO pads, and UART downlink.
+    - **PicoRV32 Microcontroller Starter**: RV32IMC core with AXI crossbar, dual-port RAM, and UART.
+    - **UART + FIFO Loopback Processor**: Real-time UART RX/TX with synchronous FIFO queue and GPIO status indicators.
+  - **IP Blocks**: PicoRV32 & Ibex cores, AXI-Lite & Wishbone crossbars, Dual-Port SRAM, UART, SPI, I2C, GPIO, 32-bit Timer/Watchdog, Synchronous FIFO, Clock Divider, Clock/Reset Generator.
 - **Deterministic RTL Generator**: Byte-for-byte deterministic IEEE 1800 SystemVerilog (`top.sv`) without proprietary black-box wrappers.
 - **Live Split-Screen RTL Preview**: Real-time syntax-highlighted code editor with copy and project export (.zip / .kona.json).
 - **Local Wasm Simulation & Waveform Viewer**: In-browser client-side Verilog simulation with integrated interactive VCD waveform viewer (pan, zoom, radices, cursor).

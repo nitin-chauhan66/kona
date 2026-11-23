@@ -5,63 +5,145 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kona — Visual Chip Design & Verification Platform</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20width=%22100%22%20height=%22100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
 </head>
-<body>
-  <!-- Header Bar -->
-  <header class="app-header">
+<body class="md3-theme">
+  <!-- Google Material Top App Bar -->
+  <header class="app-header md-top-app-bar">
     <div class="brand-group">
-      <div class="brand-logo">⚡ Kona</div>
-      <div class="brand-tag">Visual Silicon Platform</div>
+      <div class="brand-logo">
+        <div class="logo-icon-wrap">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+        </div>
+        <span class="logo-text">KONA</span>
+      </div>
+      <div class="brand-badge md-badge">STUDIO</div>
     </div>
 
     <div class="header-center">
-      <div id="templates-picker"></div>
-      <div id="drc-status-chip" class="status-chip success">Checking DRC...</div>
+      <div id="templates-picker" class="picker-container"></div>
+      <div id="drc-status-chip" class="status-chip success md-chip" title="Click to view DRC diagnostics" role="button" tabindex="0">
+        <span class="status-dot"></span>
+        <span class="status-text">Checking DRC...</span>
+      </div>
     </div>
 
     <div class="header-actions">
-      <div class="action-btn-group">
-        <button id="btn-zoom-out" class="icon-btn" title="Zoom Out">-</button>
-        <button id="btn-zoom-reset" class="icon-btn" title="Reset View">100%</button>
-        <button id="btn-zoom-in" class="icon-btn" title="Zoom In">+</button>
+      <!-- M3 Segmented Button Group for Zoom -->
+      <div class="action-btn-group md-segmented-button" role="group" aria-label="Canvas Zoom Controls">
+        <button id="btn-zoom-out" class="icon-btn md-icon-button" title="Zoom Out (Ctrl -)" aria-label="Zoom Out">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button id="btn-zoom-reset" class="icon-btn zoom-label md-segment-label" title="Reset Zoom to 100%">100%</button>
+        <button id="btn-zoom-in" class="icon-btn md-icon-button" title="Zoom In (Ctrl +)" aria-label="Zoom In">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
       </div>
-      <button id="btn-share-link" class="btn btn-secondary">🔗 Share</button>
-      <button id="btn-export-json" class="btn btn-secondary">Export .kona.json</button>
-      <button id="btn-export-sv" class="btn btn-primary">Export top.sv</button>
+
+      <button id="btn-share-link" class="btn btn-secondary md-btn md-btn-tonal" title="Copy shareable link to this design">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+        <span>Share</span>
+      </button>
+
+      <button id="btn-export-json" class="btn btn-secondary md-btn md-btn-tonal" title="Download .kona.json schematic netlist">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>.kona.json</span>
+      </button>
+
+      <button id="btn-export-sv" class="btn btn-primary md-btn md-btn-filled" title="Export synthesizable SystemVerilog top.sv">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <span>Export top.sv</span>
+      </button>
+
+      <button id="btn-shortcuts" class="icon-btn icon-help md-icon-button" title="Keyboard Shortcuts (?)" aria-label="Keyboard Shortcuts">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
     </div>
   </header>
 
   <!-- Main Studio Workspace -->
   <main class="app-workspace">
-    <!-- Left Sidebar: IP Catalog & Components -->
-    <aside class="sidebar-left">
+    <!-- Left Navigation Drawer: Starter IP Catalog -->
+    <aside class="sidebar-left md-nav-drawer">
       <div class="sidebar-header">
-        <h2>Starter IP Library</h2>
-        <span class="subtext">Click to place on canvas</span>
+        <div class="sidebar-title-row">
+          <div class="sidebar-title-group">
+            <svg class="sidebar-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <h2>Starter IP Library</h2>
+          </div>
+          <span class="badge-count md-badge-tonal" id="catalog-count-badge">13 IPs</span>
+        </div>
+        <p class="subtext">Click card or drag to instantiate on canvas</p>
+
+        <!-- M3 Search Bar -->
+        <div class="catalog-search-wrap md-search-bar">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="catalog-search-input" class="search-input" placeholder="Search IP (e.g. uart, rv32, ram)..." />
+          <button id="catalog-search-clear" class="search-clear-btn" title="Clear search" style="display:none;">&times;</button>
+        </div>
+
+        <!-- M3 Filter Chips Row -->
+        <div class="catalog-filter-chips" id="catalog-filter-chips">
+          <button class="md-filter-chip active" data-filter="all">All</button>
+          <button class="md-filter-chip" data-filter="processor">Cores</button>
+          <button class="md-filter-chip" data-filter="peripheral">Peripherals</button>
+          <button class="md-filter-chip" data-filter="memory">Memory</button>
+          <button class="md-filter-chip" data-filter="interconnect">Bus</button>
+        </div>
       </div>
-      <div id="catalog-items-list" class="catalog-list"></div>
+
+      <div id="catalog-items-list" class="catalog-list md-card-container"></div>
     </aside>
 
     <!-- Center: Schematic Canvas Viewport -->
     <section class="canvas-viewport">
       <canvas id="schematic-canvas"></canvas>
-      <div class="canvas-hint">
-        <span>💡 Drag port pins to route wires. Del to remove block. Click & drag to move or pan.</span>
+
+      <!-- M3 Floating Status Surface -->
+      <div class="canvas-floating-status md-floating-surface">
+        <div class="snap-indicator">
+          <span class="indicator-dot"></span>
+          <span>Grid Snap: 20px</span>
+        </div>
+        <div class="divider-dot">&bull;</div>
+        <div class="routing-indicator">
+          <span>Manhattan Auto-Router Active</span>
+        </div>
+      </div>
+
+      <!-- M3 Floating Assist Banner / Hint -->
+      <div class="canvas-hint md-floating-hint">
+        <div class="hint-icon-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v1"/><path d="M12 21v1"/><path d="M4.93 4.93l.7.7"/><path d="M18.36 18.36l.7.7"/><path d="M2 12h1"/><path d="M21 12h1"/><path d="M4.93 19.07l.7-.7"/><path d="M18.36 5.64l.7-.7"/><circle cx="12" cy="12" r="5"/></svg>
+        </div>
+        <span>Drag port pin to route wire &bull; Delete to remove &bull; Click &amp; drag block to move &bull; Space + drag to pan</span>
       </div>
     </section>
 
     <!-- Right Sidebar: Parameter Inspector & DRC -->
-    <aside class="sidebar-right">
-      <div class="sidebar-tabs">
-        <div class="tab-btn active">Inspector</div>
+    <aside class="sidebar-right md-nav-drawer-right">
+      <div class="sidebar-tabs md-tab-row">
+        <div class="tab-btn active md-tab">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Inspector</span>
+          <div class="md-tab-indicator"></div>
+        </div>
       </div>
       <div id="inspector-content" class="inspector-body"></div>
-      
+
       <!-- Collapsible DRC diagnostics pane at bottom of right sidebar -->
-      <div class="drc-panel-container">
-        <div class="drc-panel-header">
-          <span>DRC Diagnostics</span>
+      <div class="drc-panel-container md-surface-container">
+        <div class="drc-panel-header" id="drc-panel-toggle" role="button" tabindex="0" title="Click to expand/collapse DRC">
+          <div class="drc-header-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>DRC Diagnostics</span>
+          </div>
+          <span class="drc-header-badge md-badge-pill" id="drc-badge-count">0 Errors</span>
         </div>
         <div id="drc-panel-body" class="drc-panel-body"></div>
       </div>
@@ -69,28 +151,53 @@
   </main>
 
   <!-- Bottom Drawer: Split-Screen RTL Preview & Waveform Viewer -->
-  <footer class="app-bottom-drawer">
+  <footer class="app-bottom-drawer md-bottom-sheet" id="app-bottom-drawer">
     <div class="drawer-header">
-      <div class="drawer-tabs">
-        <button class="drawer-tab active" data-target="rtl">SystemVerilog Preview (top.sv)</button>
-        <button class="drawer-tab" data-target="waveform">Local Wasm Simulation & Waveforms</button>
+      <div class="drawer-tabs md-tabs">
+        <button class="drawer-tab active md-tab" data-target="rtl">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          <span>SystemVerilog Preview (top.sv)</span>
+          <div class="md-tab-indicator"></div>
+        </button>
+        <button class="drawer-tab md-tab" data-target="waveform">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span>Wasm Simulation & Waveforms</span>
+          <div class="md-tab-indicator"></div>
+        </button>
       </div>
 
       <div class="drawer-actions">
-        <button id="btn-copy-sv" class="btn-sm">Copy RTL</button>
-        <div class="sim-inline-controls">
-          <label>Cycles:</label>
-          <input type="number" id="sim-cycles" value="64" min="8" max="512" class="kona-input-sm" />
-          <button id="btn-run-sim" class="btn-sm btn-accent">▶ Run Local Wasm Sim</button>
+        <button id="btn-copy-sv" class="btn-sm md-btn md-btn-tonal-sm" title="Copy SystemVerilog top.sv to clipboard">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span>Copy RTL</span>
+        </button>
+
+        <div class="sim-inline-controls md-sim-controls">
+          <label class="sim-label" for="sim-cycles">Cycles:</label>
+          <div class="cycle-input-wrap">
+            <input type="number" id="sim-cycles" value="64" min="8" max="512" step="16" class="kona-input-sm md-number-input" />
+          </div>
+          <button id="btn-run-sim" class="btn-sm btn-accent md-btn md-btn-primary-sm" title="Run fast in-browser simulation">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Run Simulation</span>
+          </button>
           <span id="sim-status-msg" class="sim-status">Ready</span>
         </div>
+
+        <!-- Drawer Minimize / Maximize / Collapse Button -->
+        <button id="btn-toggle-drawer" class="icon-btn md-icon-button drawer-toggle-btn" title="Toggle Bottom Drawer Size" aria-label="Toggle Bottom Drawer Size">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
       </div>
     </div>
 
     <div class="drawer-content">
       <!-- Pane 1: Live SystemVerilog Output -->
       <div id="pane-rtl" class="drawer-pane active">
-        <pre><code id="sv-code-output" class="language-systemverilog">// Generating SystemVerilog...</code></pre>
+        <div class="code-editor-wrap">
+          <div class="code-line-numbers" id="code-line-numbers"></div>
+          <pre><code id="sv-code-output" class="language-systemverilog">// Generating SystemVerilog...</code></pre>
+        </div>
       </div>
 
       <!-- Pane 2: Waveform Viewer -->
@@ -99,6 +206,47 @@
       </div>
     </div>
   </footer>
+
+  <!-- Toast Notification Container (M3 Snackbars) -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Google Material 3 Modal Dialog: Keyboard Shortcuts -->
+  <div id="shortcuts-modal" class="modal-backdrop" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+    <div class="modal-card md-dialog">
+      <div class="modal-header md-dialog-header">
+        <div class="dialog-title-group">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/><line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="6" y1="16" x2="10" y2="16"/><line x1="14" y1="16" x2="18" y2="16"/></svg>
+          <h3 id="shortcuts-title">Keyboard Shortcuts</h3>
+        </div>
+        <button id="modal-close-btn" class="modal-close md-icon-button" aria-label="Close dialog">&times;</button>
+      </div>
+      <div class="modal-body md-dialog-body">
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Remove selected block or net</span>
+          <kbd class="shortcut-key">Delete / Backspace</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Create auto-routed orthogonal wire</span>
+          <kbd class="shortcut-key">Click &amp; Drag Pin</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Pan schematic canvas viewport</span>
+          <kbd class="shortcut-key">Space + Drag</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Zoom in / Zoom out viewport</span>
+          <kbd class="shortcut-key">Scroll Wheel</kbd>
+        </div>
+        <div class="shortcut-row">
+          <span class="shortcut-desc">Toggle keyboard shortcuts reference</span>
+          <kbd class="shortcut-key">?</kbd>
+        </div>
+      </div>
+      <div class="md-dialog-actions">
+        <button id="modal-confirm-btn" class="btn btn-primary md-btn md-btn-filled">Got it</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="bundle.js"></script>
 </body>

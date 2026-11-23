@@ -30,6 +30,11 @@ export function getEffectivePortWidth(modDef: KonaModuleDef | undefined, port: {
       return inst.parameters['WIDTH'] as number;
     }
   }
+  if (modDef.id === 'spi_controller' && typeof inst.parameters['DATA_WIDTH'] === 'number') {
+    if (['tx_data', 'rx_data'].includes(port.id)) {
+      return inst.parameters['DATA_WIDTH'] as number;
+    }
+  }
   return port.width;
 }
 

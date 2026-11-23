@@ -93,18 +93,28 @@ export class SchematicCanvas {
     this.render();
   }
 
+  private updateZoomLabel(): void {
+    const label = document.getElementById('btn-zoom-reset');
+    if (label) {
+      label.textContent = `${Math.round(this.transform.scale * 100)}%`;
+    }
+  }
+
   public zoomIn(): void {
     this.transform.scale = Math.min(3.0, this.transform.scale * 1.2);
+    this.updateZoomLabel();
     this.render();
   }
 
   public zoomOut(): void {
     this.transform.scale = Math.max(0.3, this.transform.scale / 1.2);
+    this.updateZoomLabel();
     this.render();
   }
 
   public resetZoom(): void {
     this.transform = { x: 60, y: 60, scale: 1.0 };
+    this.updateZoomLabel();
     this.render();
   }
 
@@ -263,6 +273,7 @@ export class SchematicCanvas {
       this.transform.x = mouse.x - (mouse.x - this.transform.x) * (newScale / this.transform.scale);
       this.transform.y = mouse.y - (mouse.y - this.transform.y) * (newScale / this.transform.scale);
       this.transform.scale = newScale;
+      this.updateZoomLabel();
       this.render();
     });
 
@@ -456,8 +467,8 @@ export class SchematicCanvas {
     ctx.save();
     ctx.scale(dpr, dpr);
 
-    // Background Canvas
-    ctx.fillStyle = '#0f172a'; // Slate 900
+    // Background Canvas (Material 3 Surface)
+    ctx.fillStyle = '#111318';
     ctx.fillRect(0, 0, w, h);
 
     // Apply Viewport Transform
@@ -491,7 +502,7 @@ export class SchematicCanvas {
     const minY = Math.floor(start.y / gridSize) * gridSize;
     const maxY = Math.ceil(end.y / gridSize) * gridSize;
 
-    ctx.fillStyle = '#1e293b'; // Slate 800
+    ctx.fillStyle = '#272c38'; // M3 Surface Container Highest
     for (let x = minX; x <= maxX; x += gridSize) {
       for (let y = minY; y <= maxY; y += gridSize) {
         ctx.fillRect(x - 1, y - 1, 2, 2);
@@ -533,32 +544,56 @@ export class SchematicCanvas {
     ctx.beginPath();
     ctx.moveTo(src.x, src.y);
 
-    // Manhattan orthogonal auto-routing
+    // Manhattan orthogonal auto-routing with rounded corners
     const midX = (src.x + tgt.x) / 2;
     ctx.lineTo(midX, src.y);
     ctx.lineTo(midX, tgt.y);
     ctx.lineTo(tgt.x, tgt.y);
 
-    ctx.strokeStyle = isSelected ? '#38bdf8' : (isBus ? '#38bdf8' : '#94a3b8');
-    ctx.lineWidth = isBus ? (isSelected ? 4 : 3) : (isSelected ? 2.5 : 1.5);
+    if (isSelected) {
+      ctx.shadowColor = '#a8c7fa';
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = '#a8c7fa';
+      ctx.lineWidth = isBus ? 4.5 : 3;
+    } else {
+      ctx.strokeStyle = isBus ? '#7fcfff' : '#8e919a';
+      ctx.lineWidth = isBus ? 3 : 1.75;
+    }
+
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.stroke();
 
-    // Bus slash decoration
+    // Bus slash & bit-width pill decoration
     if (isBus) {
       const slashX = midX;
       const slashY = (src.y + tgt.y) / 2;
+
+      // Draw wire slash
       ctx.beginPath();
-      ctx.moveTo(slashX - 4, slashY + 6);
-      ctx.lineTo(slashX + 4, slashY - 6);
-      ctx.strokeStyle = '#38bdf8';
+      ctx.moveTo(slashX - 4, slashY + 5);
+      ctx.lineTo(slashX + 4, slashY - 5);
+      ctx.strokeStyle = '#7fcfff';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      ctx.fillStyle = '#bae6fd';
-      ctx.font = '10px monospace';
-      ctx.fillText(`${width}`, slashX + 6, slashY - 2);
+      // Draw bit-width badge pill (Material 3 Primary Container)
+      const widthLabel = `[${width - 1}:0]`;
+      ctx.font = '9px "Roboto Mono", monospace';
+      const textWidth = ctx.measureText(widthLabel).width;
+      const pillW = textWidth + 8;
+      const pillH = 14;
+
+      ctx.fillStyle = '#0842a0';
+      ctx.strokeStyle = '#7fcfff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(slashX + 7, slashY - 8, pillW, pillH, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#d3e3fd';
+      ctx.fillText(widthLabel, slashX + 11, slashY + 3);
     }
 
     ctx.restore();
@@ -579,10 +614,10 @@ export class SchematicCanvas {
     ctx.lineTo(midX, current.y);
     ctx.lineTo(current.x, current.y);
 
-    // Color: Green if compatible target, Red if width mismatch, Cyan default
-    let color = '#38bdf8';
+    // Color: Green if compatible target, Red if width mismatch, Light Blue default
+    let color = '#a8c7fa';
     if (targetPort) {
-      color = targetPort.width === src.width ? '#10b981' : '#ef4444';
+      color = targetPort.width === src.width ? '#6dd58c' : '#f2b8b5';
     }
 
     ctx.strokeStyle = color;
@@ -602,36 +637,49 @@ export class SchematicCanvas {
       ctx.save();
 
       // Card shadow
-      ctx.shadowColor = isSelected ? 'rgba(56, 189, 248, 0.35)' : 'rgba(0, 0, 0, 0.4)';
-      ctx.shadowBlur = isSelected ? 16 : 8;
+      ctx.shadowColor = isSelected ? 'rgba(168, 199, 250, 0.4)' : 'rgba(0, 0, 0, 0.45)';
+      ctx.shadowBlur = isSelected ? 18 : 8;
       ctx.shadowOffsetY = 4;
 
-      // Card Body
-      ctx.fillStyle = '#1e293b'; // Slate 800
+      // Card Body (Material 3 Surface Container)
+      ctx.fillStyle = '#1a1d26';
       ctx.beginPath();
-      ctx.roundRect(inst.position.x, inst.position.y, w, h, 8);
+      ctx.roundRect(inst.position.x, inst.position.y, w, h, 12);
       ctx.fill();
 
       // Card Border
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = isSelected ? '#38bdf8' : '#334155';
+      ctx.strokeStyle = isSelected ? '#a8c7fa' : '#272c38';
       ctx.lineWidth = isSelected ? 2 : 1;
       ctx.stroke();
 
-      // Header Bar
+      // Header Bar with Category Color
       ctx.fillStyle = this.getCategoryColor(modDef?.category || 'infrastructure');
       ctx.beginPath();
-      ctx.roundRect(inst.position.x, inst.position.y, w, 28, [8, 8, 0, 0]);
+      ctx.roundRect(inst.position.x, inst.position.y, w, 32, [12, 12, 0, 0]);
       ctx.fill();
 
       // Header Title & Instance Name
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
-      ctx.fillText(inst.name, inst.position.x + 10, inst.position.y + 18);
+      ctx.font = 'bold 13px "Google Sans", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.fillText(inst.name, inst.position.x + 12, inst.position.y + 20);
 
-      ctx.fillStyle = '#cbd5e1';
-      ctx.font = '10px system-ui, -apple-system, sans-serif';
-      ctx.fillText(modDef?.name || inst.moduleId, inst.position.x + 10, inst.position.y + 44);
+      // Category Pill in header
+      if (modDef?.category) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+        const catText = modDef.category.toUpperCase();
+        ctx.font = 'bold 8px "Google Sans", "Roboto", sans-serif';
+        const catW = ctx.measureText(catText).width;
+        ctx.beginPath();
+        ctx.roundRect(inst.position.x + w - catW - 16, inst.position.y + 8, catW + 10, 16, 6);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(catText, inst.position.x + w - catW - 11, inst.position.y + 19);
+      }
+
+      ctx.fillStyle = '#8e919a';
+      ctx.font = '10px "Roboto Mono", monospace';
+      ctx.fillText(modDef?.name || inst.moduleId, inst.position.x + 12, inst.position.y + 48);
 
       // Draw Port Pins & Labels
       if (modDef) {
@@ -682,11 +730,11 @@ export class SchematicCanvas {
     const isBus = width > 1;
     const isHovered = this.hoveredPort?.portId === port.id && this.hoveredPort?.x === x && this.hoveredPort?.y === y;
 
-    // Pin Halo on hover
+    // Pin Halo on hover (Material State Layer)
     if (isHovered) {
       ctx.beginPath();
-      ctx.arc(x, y, 9, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.3)';
+      ctx.arc(x, y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(168, 199, 250, 0.25)';
       ctx.fill();
     }
 
@@ -700,8 +748,8 @@ export class SchematicCanvas {
     ctx.stroke();
 
     // Port Label
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '11px monospace';
+    ctx.fillStyle = '#c4c6d0';
+    ctx.font = '11px "Roboto Mono", monospace';
 
     const label = isBus ? `${port.name}[${width - 1}:0]` : port.name;
     if (align === 'left') {
@@ -718,22 +766,22 @@ export class SchematicCanvas {
 
   private getCategoryColor(category: string): string {
     switch (category) {
-      case 'processor': return '#4f46e5'; // Indigo
-      case 'interconnect': return '#7c3aed'; // Purple
-      case 'memory': return '#db2777'; // Pink
-      case 'peripheral': return '#0284c7'; // Blue
-      case 'infrastructure': return '#059669'; // Emerald
-      default: return '#475569';
+      case 'processor': return '#0842a0'; // Primary Container
+      case 'interconnect': return '#4f378b'; // Tertiary Container
+      case 'memory': return '#601410'; // Dark Crimson Container
+      case 'peripheral': return '#004d67'; // Secondary Container
+      case 'infrastructure': return '#0a5223'; // Success Container
+      default: return '#272c38';
     }
   }
 
   private getPortTypeColor(type: string): string {
     switch (type) {
-      case 'clock': return '#c084fc'; // Purple
-      case 'reset': return '#fbbf24'; // Amber
-      case 'bus': return '#38bdf8'; // Cyan
-      case 'data': return '#34d399'; // Green
-      default: return '#94a3b8';
+      case 'clock': return '#d0bcff'; // Tertiary
+      case 'reset': return '#fbc02d'; // Warning
+      case 'bus': return '#7fcfff'; // Secondary
+      case 'data': return '#6dd58c'; // Success
+      default: return '#8e919a';
     }
   }
 }

@@ -252,4 +252,229 @@ module clock_divider #(
   end
 endmodule
 
+// 9. lowRISC Ibex RISC-V Core (OpenTitan)
+module ibex #(
+  parameter bit PMP_ENABLE = 1'b0,
+  parameter bit RV32M      = 1'b1,
+  parameter bit RV32B      = 1'b0
+) (
+  input  logic        clk,
+  input  logic        rst_n,
+  // Instruction Memory Interface
+  output logic        instr_req,
+  input  logic        instr_gnt,
+  input  logic        instr_rvalid,
+  output logic [31:0] instr_addr,
+  input  logic [31:0] instr_rdata,
+  // Data Memory Interface
+  output logic        data_req,
+  input  logic        data_gnt,
+  input  logic        data_rvalid,
+  output logic        data_we,
+  output logic [31:0] data_addr,
+  output logic [31:0] data_wdata,
+  input  logic [31:0] data_rdata,
+  // Interrupts
+  input  logic        irq_software,
+  input  logic        irq_timer,
+  input  logic        irq_external
+);
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      instr_req  <= 1'b0;
+      instr_addr <= 32'h0000_0000;
+      data_req   <= 1'b0;
+      data_we    <= 1'b0;
+      data_addr  <= 32'h0000_0000;
+      data_wdata <= 32'h0000_0000;
+    end else begin
+      instr_req  <= 1'b1;
+      instr_addr <= instr_gnt ? instr_addr + 4 : instr_addr;
+      data_req   <= 1'b1;
+      data_addr  <= data_gnt ? data_addr + 4 : data_addr;
+    end
+  end
+endmodule
+
+// 10. Wishbone B4 Crossbar (LiteX Interconnect)
+module wishbone_crossbar #(
+  parameter integer S0_BASE_ADDR = 0,
+  parameter integer S1_BASE_ADDR = 268435456
+) (
+  input  logic        clk,
+  input  logic        rst_n,
+  // Master Port
+  input  logic        wb_cyc_i,
+  input  logic        wb_stb_i,
+  input  logic        wb_we_i,
+  input  logic [31:0] wb_adr_i,
+  input  logic [31:0] wb_dat_i,
+  output logic [31:0] wb_dat_o,
+  output logic        wb_ack_o,
+  // Slave 0 (Memory)
+  output logic        s0_cyc_o,
+  output logic        s0_stb_o,
+  output logic [31:0] s0_adr_o,
+  output logic [31:0] s0_dat_o,
+  input  logic [31:0] s0_dat_i,
+  input  logic        s0_ack_i,
+  // Slave 1 (Peripherals)
+  output logic        s1_cyc_o,
+  output logic        s1_stb_o,
+  output logic [31:0] s1_adr_o,
+  output logic [31:0] s1_dat_o,
+  input  logic [31:0] s1_dat_i,
+  input  logic        s1_ack_i
+);
+  logic sel_s1;
+  assign sel_s1 = (wb_adr_i >= S1_BASE_ADDR);
+
+  assign s0_cyc_o = wb_cyc_i && !sel_s1;
+  assign s0_stb_o = wb_stb_i && !sel_s1;
+  assign s0_adr_o = wb_adr_i;
+  assign s0_dat_o = wb_dat_i;
+
+  assign s1_cyc_o = wb_cyc_i && sel_s1;
+  assign s1_stb_o = wb_stb_i && sel_s1;
+  assign s1_adr_o = wb_adr_i;
+  assign s1_dat_o = wb_dat_i;
+
+  assign wb_dat_o = sel_s1 ? s1_dat_i : s0_dat_i;
+  assign wb_ack_o = sel_s1 ? s1_ack_i : s0_ack_i;
+endmodule
+
+// 11. SPI Master Controller
+module spi_controller #(
+  parameter integer CLK_DIV    = 8,
+  parameter integer DATA_WIDTH = 8
+) (
+  input  logic                  clk,
+  input  logic                  rst_n,
+  input  logic [DATA_WIDTH-1:0] tx_data,
+  input  logic                  tx_valid,
+  output logic                  tx_ready,
+  output logic [DATA_WIDTH-1:0] rx_data,
+  output logic                  rx_valid,
+  output logic                  spi_sclk,
+  output logic                  spi_cs_n,
+  output logic                  spi_mosi,
+  input  logic                  spi_miso
+);
+  logic [3:0] bit_cnt;
+  logic [7:0] shift_reg;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      tx_ready  <= 1'b1;
+      rx_data   <= '0;
+      rx_valid  <= 1'b0;
+      spi_sclk  <= 1'b0;
+      spi_cs_n  <= 1'b1;
+      spi_mosi  <= 1'b0;
+      bit_cnt   <= '0;
+      shift_reg <= '0;
+    end else begin
+      if (tx_valid && tx_ready) begin
+        shift_reg <= tx_data;
+        spi_cs_n  <= 1'b0;
+        tx_ready  <= 1'b0;
+        bit_cnt   <= 4'd8;
+      end else if (!spi_cs_n) begin
+        spi_sclk <= ~spi_sclk;
+        if (spi_sclk) begin
+          spi_mosi <= shift_reg[7];
+          shift_reg <= {shift_reg[6:0], spi_miso};
+          bit_cnt <= bit_cnt - 1'b1;
+          if (bit_cnt == 4'd1) begin
+            spi_cs_n <= 1'b1;
+            tx_ready <= 1'b1;
+            rx_data  <= shift_reg;
+            rx_valid <= 1'b1;
+          end
+        end
+      end else begin
+        rx_valid <= 1'b0;
+      end
+    end
+  end
+endmodule
+
+// 12. I2C Master Controller
+module i2c_controller #(
+  parameter integer PRESCALE = 125
+) (
+  input  logic       clk,
+  input  logic       rst_n,
+  input  logic [7:0] addr,
+  input  logic [7:0] din,
+  input  logic       start,
+  output logic       busy,
+  output logic [7:0] dout,
+  output logic       ack_err,
+  output logic       scl,
+  output logic       sda_out,
+  input  logic       sda_in
+);
+  logic [15:0] clk_div;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      busy     <= 1'b0;
+      dout     <= 8'h00;
+      ack_err  <= 1'b0;
+      scl      <= 1'b1;
+      sda_out  <= 1'b1;
+      clk_div  <= '0;
+    end else begin
+      if (start && !busy) begin
+        busy    <= 1'b1;
+        scl     <= 1'b0;
+        sda_out <= 1'b0;
+        dout    <= din;
+      end else if (busy) begin
+        clk_div <= clk_div + 1'b1;
+        if (clk_div >= PRESCALE) begin
+          clk_div <= '0;
+          busy    <= 1'b0;
+          scl     <= 1'b1;
+          sda_out <= 1'b1;
+        end
+      end
+    end
+  end
+endmodule
+
+// 13. 32-bit System Timer & Watchdog
+module timer_core #(
+  parameter integer PRESCALER = 50
+) (
+  input  logic        clk,
+  input  logic        rst_n,
+  input  logic [31:0] addr,
+  input  logic [31:0] wdata,
+  input  logic        we,
+  output logic [31:0] rdata,
+  output logic        irq
+);
+  logic [31:0] timer_val;
+  logic [31:0] compare_val;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      timer_val   <= 32'h0;
+      compare_val <= 32'hFFFF_FFFF;
+      rdata       <= 32'h0;
+      irq         <= 1'b0;
+    end else begin
+      timer_val <= timer_val + 1'b1;
+      if (we) begin
+        if (addr[3:0] == 4'h0) timer_val <= wdata;
+        else if (addr[3:0] == 4'h4) compare_val <= wdata;
+      end
+      rdata <= (addr[3:0] == 4'h4) ? compare_val : timer_val;
+      irq   <= (timer_val >= compare_val);
+    end
+  end
+endmodule
+
 `default_nettype wire
