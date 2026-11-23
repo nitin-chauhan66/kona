@@ -1,0 +1,12 @@
+{
+  "name": "@kona/web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node server.mjs"
+  },
+  "dependencies": {
+    "@kona/core": "*"
+  }
+}

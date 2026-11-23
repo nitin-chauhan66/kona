@@ -1,0 +1,23 @@
+{
+  "name": "kona",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Visual Chip Design & Verification Platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build:packages && npm run build:web",
+    "build:packages": "tsc -b packages/core",
+    "build:web": "node apps/web/build.mjs",
+    "typecheck": "tsc -b --pretty false",
+    "dev": "node apps/web/server.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "esbuild": "^0.25.11",
+    "typescript": "^5.9.2"
+  }
+}
