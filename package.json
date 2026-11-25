@@ -11,17 +11,15 @@
     "build": "npm run build:packages && npm run build:web",
     "build:packages": "tsc -b packages/core",
     "build:web": "node apps/web/build.mjs",
-    "typecheck": "tsc -b --pretty false",
+    "typecheck": "tsc -b --pretty false && tsc -p apps/web/tsconfig.json --noEmit --pretty false",
     "dev": "node apps/web/dev.mjs",
-    "test": "npm run build && node --test tests/*.test.mjs"
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:eda": "npm run build:packages && node --test tests/verilator-yosys.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
     "esbuild": "^0.25.11",
     "jsdom": "^31.0.1",
     "typescript": "^5.9.2"
-  },
-  "dependencies": {
-    "@esbuild/win32-x64": "0.28.2"
   }
 }
