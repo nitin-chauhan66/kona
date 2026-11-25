@@ -1,4 +1,5 @@
 import { STARTER_IP_CATALOG } from '../../../../packages/core/dist/catalog.js';
+import { getPlainModuleInfo } from '../../../../packages/core/dist/plain-english.js';
 import { escapeHtml } from '../utils/html.js';
 
 export interface CatalogPanelCallbacks {
@@ -7,11 +8,12 @@ export interface CatalogPanelCallbacks {
 
 /**
  * Manages the left-hand Starter IP Library: search, category filter chips,
- * click-to-add, and HTML5 drag-to-canvas payload setup.
+ * click-to-add, Simple Mode plain-English cards, and HTML5 drag-to-canvas payload setup.
  */
 export class CatalogPanel {
   private activeFilter = 'all';
   private searchQuery = '';
+  private simpleMode = false;
   private readonly listEl: HTMLElement | null;
   private readonly callbacks: CatalogPanelCallbacks;
 
@@ -21,6 +23,11 @@ export class CatalogPanel {
     if (!this.listEl) return;
 
     this.bindControls();
+    this.render();
+  }
+
+  public setSimpleMode(enabled: boolean): void {
+    this.simpleMode = enabled;
     this.render();
   }
 
@@ -73,19 +80,24 @@ export class CatalogPanel {
     if (items.length === 0) {
       this.listEl.innerHTML = `<div class="catalog-empty"><p>No matching IP modules found.</p></div>`;
     } else {
-      this.listEl.innerHTML = items.map(mod => `
+      this.listEl.innerHTML = items.map(mod => {
+        const plain = getPlainModuleInfo(mod.id);
+        const title = this.simpleMode ? plain.friendlyName : mod.name;
+        const desc = this.simpleMode ? plain.whatItDoes : mod.description;
+        return `
         <div class="catalog-card" role="button" tabindex="0" draggable="true" data-module-id="${mod.id}" title="${escapeHtml(mod.description)}">
           <div class="catalog-card-header">
-            <span class="catalog-category-tag ${mod.category}">${mod.category}</span>
+            <span class="catalog-category-tag ${mod.category}">${this.simpleMode ? plain.analogy : mod.category}</span>
             <span class="catalog-meta-right">
               <span class="catalog-port-count">${mod.ports.length}p</span>
               <span class="catalog-add-btn">+ Add</span>
             </span>
           </div>
-          <div class="catalog-card-title">${escapeHtml(mod.name)}</div>
-          <div class="catalog-card-desc">${escapeHtml(mod.description)}</div>
+          <div class="catalog-card-title">${escapeHtml(title)}</div>
+          <div class="catalog-card-desc">${escapeHtml(desc)}</div>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       this.listEl.querySelectorAll('.catalog-card').forEach(card => {
         const triggerAdd = () => {

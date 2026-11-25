@@ -5,6 +5,7 @@ import {
   analyzeArchitecture,
   generateArchitectureSpecMarkdown
 } from '../../../../packages/core/dist/architecture.js';
+import { getPlainModuleInfo } from '../../../../packages/core/dist/plain-english.js';
 import { downloadFile } from '../state/Persistence.js';
 import { escapeHtml } from '../utils/html.js';
 
@@ -181,6 +182,7 @@ export class InspectorPanel {
   private renderModuleInspector(diagnostics: DrcDiagnostic[], inst: KonaModuleInstance): void {
     if (!this.container) return;
     const modDef = getModuleDef(inst.moduleId);
+    const plain = getPlainModuleInfo(inst.moduleId);
     const instDiags = diagnostics.filter(d => d.instanceId === inst.id);
 
     let html = `
@@ -193,6 +195,10 @@ export class InspectorPanel {
           </div>
         </div>
         <h3>${escapeHtml(inst.name)}</h3>
+        <div class="plain-guide-card">
+          <strong>${escapeHtml(plain.friendlyName)}</strong>
+          <span>${escapeHtml(plain.whatItDoes)}</span>
+        </div>
         <p class="inspector-desc">${modDef?.description || ''}</p>
       </div>
     `;

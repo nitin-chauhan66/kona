@@ -6,6 +6,7 @@ import { generateSystemVerilog } from '../packages/core/dist/codegen.js';
 import { runSimulation } from '../packages/core/dist/sim.js';
 import { parseVcd, formatSignalValue } from '../packages/core/dist/vcd.js';
 import { serializeKonaDesign, parseKonaDesign } from '../packages/core/dist/ir.js';
+import { autoWireDesign, getPlainModuleInfo } from '../packages/core/dist/index.js';
 
 test('E2E FR-1.1 Canvas & Orthogonal Routing: Manhattan path generation', () => {
   const tmpl = STARTER_TEMPLATES[0];
@@ -128,4 +129,30 @@ test('E2E FR-1.6 Shareable Links & Serialization: lossless URL hash roundtrip', 
   assert.equal(restored.name, design.name);
   assert.equal(restored.instances.length, design.instances.length);
   assert.equal(restored.nets.length, design.nets.length);
+});
+
+test('E2E Beginner Mode: autoWireDesign connects clocks/resets and plain-English covers full catalog', () => {
+  for (const mod of STARTER_IP_CATALOG) {
+    const plain = getPlainModuleInfo(mod.id);
+    assert.ok(plain.friendlyName && plain.friendlyName !== mod.id, `${mod.id} must have friendly name`);
+    assert.ok(plain.whatItDoes.length > 10, `${mod.id} must have plain explanation`);
+  }
+
+  const design = STARTER_TEMPLATES[0].createDesign();
+  // Add an unconnected I2C peripheral
+  design.instances.push({
+    id: 'i2c_unwired',
+    moduleId: 'i2c_controller',
+    name: 'u_i2c_extra',
+    position: { x: 400, y: 400 },
+    parameters: { PRESCALE: 125 }
+  });
+  const before = runDesignRuleCheck(design);
+  assert.ok(before.some(d => d.rule === 'UNCONNECTED_CLOCK' && d.instanceId === 'i2c_unwired'));
+
+  const { design: wired, summary } = autoWireDesign(design);
+  assert.equal(summary.connectedClocks, 1);
+  assert.equal(summary.connectedResets, 1);
+  const after = runDesignRuleCheck(wired);
+  assert.equal(after.filter(d => d.instanceId === 'i2c_unwired').length, 0, 'Auto-wire resolves clock/reset warnings');
 });

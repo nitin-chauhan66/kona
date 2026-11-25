@@ -13,3 +13,5 @@ export * from './tar.js';
 export * from './asic-rtl.js';
 export * from './architecture.js';
 export * from './asic-bundle.js';
+export * from './auto-wire.js';
+export * from './plain-english.js';

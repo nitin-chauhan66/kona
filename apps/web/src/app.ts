@@ -10,6 +10,7 @@
  * - URL Persistence & Export Actions (FR-1.6)
  */
 
+import { autoWireDesign } from '../../../packages/core/dist/auto-wire.js';
 import { parseKonaDesign, serializeKonaDesign } from '../../../packages/core/dist/ir.js';
 import { STARTER_TEMPLATES } from '../../../packages/core/dist/catalog.js';
 import { generateSystemVerilog } from '../../../packages/core/dist/codegen.js';
@@ -28,6 +29,7 @@ import { InspectorPanel } from './components/InspectorPanel.js';
 import { RtlPreviewPanel } from './components/RtlPreviewPanel.js';
 import { WaveformViewer } from './components/WaveformViewer.js';
 import { TapeoutPanel } from './components/TapeoutPanel.js';
+import { ChipWizardModal } from './components/ChipWizardModal.js';
 import { LayoutResizer } from './components/LayoutResizer.js';
 import { showToast } from './components/ToastService.js';
 
@@ -39,8 +41,11 @@ export class KonaApp {
   private readonly inspectorPanel: InspectorPanel;
   private readonly rtlPreviewPanel: RtlPreviewPanel;
   private readonly tapeoutPanel: TapeoutPanel;
+  private readonly catalogPanel: CatalogPanel;
+  private readonly wizardModal: ChipWizardModal;
   private readonly layoutResizer: LayoutResizer;
   private drawerState: 'normal' | 'minimized' | 'expanded' = 'normal';
+  private simpleMode = false;
 
   constructor() {
     const initialHash = typeof window !== 'undefined' ? window.location.hash : '';
@@ -86,7 +91,8 @@ export class KonaApp {
         this.syncMobileBackdrop();
         this.layoutResizer.syncHandleVisibility();
         this.canvas.resize();
-      }
+      },
+      onAutoWire: () => this.runAutoWire(false)
     });
 
     this.inspectorPanel = new InspectorPanel({
@@ -119,11 +125,23 @@ export class KonaApp {
       }
     });
 
-    new CatalogPanel({
+    this.catalogPanel = new CatalogPanel({
       onAddModule: (moduleId) => {
         this.canvas.addModule(moduleId);
+        if (this.simpleMode) {
+          this.runAutoWire(true);
+        }
         if (this.isMobileLayout()) this.closeMobileSidebars();
         showToast(`Added ${moduleId} to canvas`, 'success');
+      }
+    });
+
+    this.wizardModal = new ChipWizardModal({
+      onCreateDesign: (wiredDesign, summaryMessage) => {
+        this.canvas.setDesign(wiredDesign);
+        this.store.loadTemplateDesign(wiredDesign);
+        this.canvas.fitToScreen();
+        showToast(summaryMessage, 'success');
       }
     });
 
@@ -137,6 +155,7 @@ export class KonaApp {
     this.setupSidebarToggles();
     this.setupBottomDrawerTabs();
     this.setupSimulationControls();
+    this.setupSimpleMode();
 
     this.layoutResizer = new LayoutResizer({
       onLayoutChange: () => {
@@ -370,6 +389,10 @@ export class KonaApp {
       this.canvas.setGridSnap(next);
       snapBtn.classList.toggle('active', next);
       if (snapLabel) snapLabel.textContent = next ? 'Grid Snap: 20px' : 'Grid Snap: Off';
+    });
+
+    document.getElementById('btn-canvas-auto-wire')?.addEventListener('click', () => {
+      this.runAutoWire(false);
     });
 
     document.getElementById('btn-canvas-inspect')?.addEventListener('click', () => {
@@ -648,7 +671,61 @@ export class KonaApp {
         if (simStatus) {
           simStatus.textContent = `Completed ${result.totalCycles} cycles in ${result.durationMs}ms`;
         }
+        const sigCount = result.trace.signals.length;
+        showToast(`Chip tested for ${result.totalCycles} clock cycles (${sigCount} signals active). Click timeline to inspect!`, 'success');
       }, 40);
+    });
+  }
+
+  private runAutoWire(silentIfNoOp: boolean): void {
+    const { design: wired, summary } = autoWireDesign(this.store.getDesign());
+    const changes = summary.connectedClocks + summary.connectedResets + summary.removedOrphanNets + (summary.createdClockGen ? 1 : 0);
+    if (changes === 0) {
+      if (!silentIfNoOp) showToast('All clock & reset pins are already connected!', 'info');
+      return;
+    }
+    this.canvas.setDesign(wired);
+    this.store.commitMutation(wired);
+    this.canvas.fitToScreen();
+    if (!silentIfNoOp) {
+      showToast(`Auto-wired ${summary.connectedClocks} clock and ${summary.connectedResets} reset pin(s)`, 'success');
+    }
+  }
+
+  private setupSimpleMode(): void {
+    const btn = document.getElementById('btn-simple-mode');
+    const applyMode = (enabled: boolean) => {
+      this.simpleMode = enabled;
+      document.body.classList.toggle('simple-mode', enabled);
+      this.catalogPanel.setSimpleMode(enabled);
+      if (btn) {
+        btn.classList.toggle('active', enabled);
+        btn.setAttribute('aria-pressed', String(enabled));
+        const lbl = btn.querySelector('.btn-label');
+        if (lbl) lbl.textContent = enabled ? 'Simple: On' : 'Simple Mode';
+      }
+      try {
+        window.localStorage?.setItem('kona.simpleMode', enabled ? '1' : '0');
+      } catch {
+        // Ignore storage errors
+      }
+    };
+
+    try {
+      if (window.localStorage?.getItem('kona.simpleMode') === '1') {
+        applyMode(true);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
+    btn?.addEventListener('click', () => {
+      const next = !this.simpleMode;
+      applyMode(next);
+      showToast(
+        next ? 'Simple Mode enabled: plain-English labels & auto-wiring active' : 'Engineer Mode enabled',
+        'info'
+      );
     });
   }
 }

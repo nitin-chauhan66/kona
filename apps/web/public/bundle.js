@@ -24,182 +24,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// packages/core/dist/ir.js
-var require_ir = __commonJS({
-  "packages/core/dist/ir.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.validateKonaDesignSchema = validateKonaDesignSchema;
-    exports.serializeKonaDesign = serializeKonaDesign3;
-    exports.parseKonaDesign = parseKonaDesign4;
-    function validateKonaDesignSchema(design) {
-      const errors = [];
-      if (!design || typeof design !== "object") {
-        return ["Design root must be an object"];
-      }
-      const d = design;
-      if (d.version !== "1.0") {
-        errors.push(`Invalid version: expected '1.0', got '${d.version}'`);
-      }
-      if (!d.name || typeof d.name !== "string") {
-        errors.push('Design must have a valid string "name"');
-      }
-      if (!d.topModule || typeof d.topModule !== "string") {
-        errors.push('Design must have a valid string "topModule"');
-      }
-      if (!Array.isArray(d.instances)) {
-        errors.push('Design "instances" must be an array');
-      } else {
-        const instIds = /* @__PURE__ */ new Set();
-        for (let i = 0; i < d.instances.length; i++) {
-          const inst = d.instances[i];
-          if (!inst.id || typeof inst.id !== "string") {
-            errors.push(`Instance #${i} must have a valid string "id"`);
-          } else if (instIds.has(inst.id)) {
-            errors.push(`Duplicate instance id "${inst.id}" at index ${i}`);
-          } else {
-            instIds.add(inst.id);
-          }
-          if (!inst.moduleId || typeof inst.moduleId !== "string") {
-            errors.push(`Instance "${inst.id || i}" missing "moduleId"`);
-          }
-          if (!inst.position || typeof inst.position.x !== "number" || typeof inst.position.y !== "number") {
-            errors.push(`Instance "${inst.id || i}" missing valid position {x, y}`);
-          }
-        }
-      }
-      if (!Array.isArray(d.nets)) {
-        errors.push('Design "nets" must be an array');
-      } else {
-        const netIds = /* @__PURE__ */ new Set();
-        for (let i = 0; i < d.nets.length; i++) {
-          const net = d.nets[i];
-          if (!net.id || typeof net.id !== "string") {
-            errors.push(`Net #${i} must have a valid string "id"`);
-          } else if (netIds.has(net.id)) {
-            errors.push(`Duplicate net id "${net.id}" at index ${i}`);
-          } else {
-            netIds.add(net.id);
-          }
-          if (typeof net.width !== "number" || net.width < 1) {
-            errors.push(`Net "${net.id || i}" must have a positive number "width"`);
-          }
-          if (!Array.isArray(net.targets)) {
-            errors.push(`Net "${net.id || i}" "targets" must be an array`);
-          }
-        }
-      }
-      if (d.silicon !== void 0) {
-        const s = d.silicon;
-        if (!s || typeof s !== "object") {
-          errors.push('Design "silicon" must be an object');
-        } else {
-          if (!s.pdkId || !["sky130A", "gf180mcuD", "sg13g2"].includes(s.pdkId)) {
-            errors.push(`Invalid silicon.pdkId "${String(s.pdkId)}"`);
-          }
-          if (typeof s.clockFreqMhz !== "number" || s.clockFreqMhz <= 0) {
-            errors.push("silicon.clockFreqMhz must be a positive number");
-          }
-          if (typeof s.coreUtilization !== "number" || s.coreUtilization <= 0 || s.coreUtilization > 1) {
-            errors.push("silicon.coreUtilization must be between 0 and 1");
-          }
-          if (s.pinEdges !== void 0) {
-            for (const [pin, edge] of Object.entries(s.pinEdges)) {
-              if (!["N", "S", "E", "W"].includes(edge)) {
-                errors.push(`Invalid pin edge "${String(edge)}" for pin "${pin}"`);
-              }
-            }
-          }
-        }
-      }
-      if (d.spec !== void 0) {
-        const sp = d.spec;
-        if (!sp || typeof sp !== "object") {
-          errors.push('Design "spec" must be an object');
-        } else {
-          if (sp.powerBudgetMw !== void 0 && (typeof sp.powerBudgetMw !== "number" || sp.powerBudgetMw <= 0)) {
-            errors.push("spec.powerBudgetMw must be a positive number");
-          }
-          if (sp.maxAreaMm2 !== void 0 && (typeof sp.maxAreaMm2 !== "number" || sp.maxAreaMm2 <= 0)) {
-            errors.push("spec.maxAreaMm2 must be a positive number");
-          }
-        }
-      }
-      return errors;
-    }
-    function serializeKonaDesign3(design) {
-      const sortedInstances = [...design.instances].sort((a, b) => a.id.localeCompare(b.id));
-      const sortedNets = [...design.nets].sort((a, b) => a.id.localeCompare(b.id));
-      const sortedDesign = {
-        version: design.version,
-        name: design.name,
-        topModule: design.topModule,
-        instances: sortedInstances.map((inst) => ({
-          id: inst.id,
-          moduleId: inst.moduleId,
-          name: inst.name,
-          position: { x: Math.round(inst.position.x), y: Math.round(inst.position.y) },
-          parameters: Object.keys(inst.parameters).sort().reduce((acc, k) => {
-            acc[k] = inst.parameters[k];
-            return acc;
-          }, {})
-        })),
-        nets: sortedNets.map((net) => ({
-          id: net.id,
-          name: net.name,
-          width: net.width,
-          ...net.source ? { source: { instanceId: net.source.instanceId, portId: net.source.portId } } : {},
-          targets: [...net.targets].sort((a, b) => (a.instanceId + a.portId).localeCompare(b.instanceId + b.portId))
-        })),
-        ...design.spec ? {
-          spec: {
-            ...design.spec.targetApplication !== void 0 ? { targetApplication: design.spec.targetApplication } : {},
-            ...design.spec.author !== void 0 ? { author: design.spec.author } : {},
-            ...design.spec.powerBudgetMw !== void 0 ? { powerBudgetMw: design.spec.powerBudgetMw } : {},
-            ...design.spec.maxAreaMm2 !== void 0 ? { maxAreaMm2: design.spec.maxAreaMm2 } : {},
-            ...design.spec.notes !== void 0 ? { notes: design.spec.notes } : {}
-          }
-        } : {},
-        ...design.silicon ? {
-          silicon: {
-            pdkId: design.silicon.pdkId,
-            clockFreqMhz: design.silicon.clockFreqMhz,
-            coreUtilization: design.silicon.coreUtilization,
-            diePreset: design.silicon.diePreset,
-            packageType: design.silicon.packageType,
-            shuttleTarget: design.silicon.shuttleTarget,
-            sramMode: design.silicon.sramMode,
-            includeIoPads: design.silicon.includeIoPads,
-            ...design.silicon.pinEdges ? {
-              pinEdges: Object.keys(design.silicon.pinEdges).sort().reduce((acc, k) => {
-                acc[k] = design.silicon.pinEdges[k];
-                return acc;
-              }, {})
-            } : {}
-          }
-        } : {},
-        metadata: {
-          ...design.metadata,
-          version: design.metadata.version || "1.0"
-        }
-      };
-      return JSON.stringify(sortedDesign, null, 2);
-    }
-    function parseKonaDesign4(jsonString) {
-      try {
-        const raw = JSON.parse(jsonString);
-        const errors = validateKonaDesignSchema(raw);
-        if (errors.length > 0) {
-          return { errors };
-        }
-        return { design: raw, errors: [] };
-      } catch (err) {
-        return { errors: [`JSON Parse error: ${err.message}`] };
-      }
-    }
-  }
-});
-
 // packages/core/dist/catalog/registry.js
 var require_registry = __commonJS({
   "packages/core/dist/catalog/registry.js"(exports) {
@@ -1600,6 +1424,264 @@ var require_catalog2 = __commonJS({
   }
 });
 
+// packages/core/dist/auto-wire.js
+var require_auto_wire = __commonJS({
+  "packages/core/dist/auto-wire.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.autoWireDesign = autoWireDesign3;
+    var catalog_js_1 = require_catalog2();
+    function cloneDesign(design) {
+      return JSON.parse(JSON.stringify(design));
+    }
+    function isInputConnected(design, instanceId, portId) {
+      return design.nets.some((n) => n.targets.some((t) => t.instanceId === instanceId && t.portId === portId));
+    }
+    function findOrCreateSourceNet(design, sourceInstId, sourcePortId, preferredName) {
+      let net = design.nets.find((n) => n.source?.instanceId === sourceInstId && n.source?.portId === sourcePortId);
+      if (net)
+        return net;
+      const uniqueId = `net_auto_${preferredName}_${Date.now()}_${Math.floor(Math.random() * 1e3)}`;
+      net = {
+        id: uniqueId,
+        name: preferredName,
+        width: 1,
+        source: { instanceId: sourceInstId, portId: sourcePortId },
+        targets: []
+      };
+      design.nets.push(net);
+      return net;
+    }
+    function autoWireDesign3(inputDesign) {
+      const design = cloneDesign(inputDesign);
+      const summary = {
+        createdClockGen: false,
+        connectedClocks: 0,
+        connectedResets: 0,
+        removedOrphanNets: 0
+      };
+      if (design.instances.length === 0) {
+        return { design, summary };
+      }
+      let clkGen = design.instances.find((i) => i.moduleId === "clock_gen");
+      if (!clkGen) {
+        const minX = Math.min(...design.instances.map((i) => i.position.x));
+        const avgY = design.instances.reduce((s, i) => s + i.position.y, 0) / design.instances.length;
+        clkGen = {
+          id: `clock_gen_auto_${Date.now()}`,
+          moduleId: "clock_gen",
+          name: "u_clk_gen",
+          position: { x: Math.max(40, Math.round(minX - 240)), y: Math.max(60, Math.round(avgY)) },
+          parameters: { FREQ_MHZ: design.silicon?.clockFreqMhz || 50 }
+        };
+        design.instances.unshift(clkGen);
+        summary.createdClockGen = true;
+      }
+      const clkNet = findOrCreateSourceNet(design, clkGen.id, "clk_out", "clk");
+      const rstNet = findOrCreateSourceNet(design, clkGen.id, "rst_n_out", "rst_n");
+      for (const inst of design.instances) {
+        if (inst.id === clkGen.id)
+          continue;
+        const modDef = (0, catalog_js_1.getModuleDef)(inst.moduleId);
+        if (!modDef)
+          continue;
+        for (const port of modDef.ports) {
+          if (port.direction !== "input")
+            continue;
+          if (port.type === "clock" && !isInputConnected(design, inst.id, port.id)) {
+            clkNet.targets.push({ instanceId: inst.id, portId: port.id });
+            summary.connectedClocks++;
+          } else if (port.type === "reset" && !isInputConnected(design, inst.id, port.id)) {
+            rstNet.targets.push({ instanceId: inst.id, portId: port.id });
+            summary.connectedResets++;
+          }
+        }
+      }
+      const beforeLen = design.nets.length;
+      design.nets = design.nets.filter((n) => Boolean(n.source) || n.targets.length > 0);
+      summary.removedOrphanNets = beforeLen - design.nets.length;
+      design.metadata.modified = (/* @__PURE__ */ new Date()).toISOString();
+      return { design, summary };
+    }
+  }
+});
+
+// packages/core/dist/ir.js
+var require_ir = __commonJS({
+  "packages/core/dist/ir.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.validateKonaDesignSchema = validateKonaDesignSchema;
+    exports.serializeKonaDesign = serializeKonaDesign3;
+    exports.parseKonaDesign = parseKonaDesign4;
+    function validateKonaDesignSchema(design) {
+      const errors = [];
+      if (!design || typeof design !== "object") {
+        return ["Design root must be an object"];
+      }
+      const d = design;
+      if (d.version !== "1.0") {
+        errors.push(`Invalid version: expected '1.0', got '${d.version}'`);
+      }
+      if (!d.name || typeof d.name !== "string") {
+        errors.push('Design must have a valid string "name"');
+      }
+      if (!d.topModule || typeof d.topModule !== "string") {
+        errors.push('Design must have a valid string "topModule"');
+      }
+      if (!Array.isArray(d.instances)) {
+        errors.push('Design "instances" must be an array');
+      } else {
+        const instIds = /* @__PURE__ */ new Set();
+        for (let i = 0; i < d.instances.length; i++) {
+          const inst = d.instances[i];
+          if (!inst.id || typeof inst.id !== "string") {
+            errors.push(`Instance #${i} must have a valid string "id"`);
+          } else if (instIds.has(inst.id)) {
+            errors.push(`Duplicate instance id "${inst.id}" at index ${i}`);
+          } else {
+            instIds.add(inst.id);
+          }
+          if (!inst.moduleId || typeof inst.moduleId !== "string") {
+            errors.push(`Instance "${inst.id || i}" missing "moduleId"`);
+          }
+          if (!inst.position || typeof inst.position.x !== "number" || typeof inst.position.y !== "number") {
+            errors.push(`Instance "${inst.id || i}" missing valid position {x, y}`);
+          }
+        }
+      }
+      if (!Array.isArray(d.nets)) {
+        errors.push('Design "nets" must be an array');
+      } else {
+        const netIds = /* @__PURE__ */ new Set();
+        for (let i = 0; i < d.nets.length; i++) {
+          const net = d.nets[i];
+          if (!net.id || typeof net.id !== "string") {
+            errors.push(`Net #${i} must have a valid string "id"`);
+          } else if (netIds.has(net.id)) {
+            errors.push(`Duplicate net id "${net.id}" at index ${i}`);
+          } else {
+            netIds.add(net.id);
+          }
+          if (typeof net.width !== "number" || net.width < 1) {
+            errors.push(`Net "${net.id || i}" must have a positive number "width"`);
+          }
+          if (!Array.isArray(net.targets)) {
+            errors.push(`Net "${net.id || i}" "targets" must be an array`);
+          }
+        }
+      }
+      if (d.silicon !== void 0) {
+        const s = d.silicon;
+        if (!s || typeof s !== "object") {
+          errors.push('Design "silicon" must be an object');
+        } else {
+          if (!s.pdkId || !["sky130A", "gf180mcuD", "sg13g2"].includes(s.pdkId)) {
+            errors.push(`Invalid silicon.pdkId "${String(s.pdkId)}"`);
+          }
+          if (typeof s.clockFreqMhz !== "number" || s.clockFreqMhz <= 0) {
+            errors.push("silicon.clockFreqMhz must be a positive number");
+          }
+          if (typeof s.coreUtilization !== "number" || s.coreUtilization <= 0 || s.coreUtilization > 1) {
+            errors.push("silicon.coreUtilization must be between 0 and 1");
+          }
+          if (s.pinEdges !== void 0) {
+            for (const [pin, edge] of Object.entries(s.pinEdges)) {
+              if (!["N", "S", "E", "W"].includes(edge)) {
+                errors.push(`Invalid pin edge "${String(edge)}" for pin "${pin}"`);
+              }
+            }
+          }
+        }
+      }
+      if (d.spec !== void 0) {
+        const sp = d.spec;
+        if (!sp || typeof sp !== "object") {
+          errors.push('Design "spec" must be an object');
+        } else {
+          if (sp.powerBudgetMw !== void 0 && (typeof sp.powerBudgetMw !== "number" || sp.powerBudgetMw <= 0)) {
+            errors.push("spec.powerBudgetMw must be a positive number");
+          }
+          if (sp.maxAreaMm2 !== void 0 && (typeof sp.maxAreaMm2 !== "number" || sp.maxAreaMm2 <= 0)) {
+            errors.push("spec.maxAreaMm2 must be a positive number");
+          }
+        }
+      }
+      return errors;
+    }
+    function serializeKonaDesign3(design) {
+      const sortedInstances = [...design.instances].sort((a, b) => a.id.localeCompare(b.id));
+      const sortedNets = [...design.nets].sort((a, b) => a.id.localeCompare(b.id));
+      const sortedDesign = {
+        version: design.version,
+        name: design.name,
+        topModule: design.topModule,
+        instances: sortedInstances.map((inst) => ({
+          id: inst.id,
+          moduleId: inst.moduleId,
+          name: inst.name,
+          position: { x: Math.round(inst.position.x), y: Math.round(inst.position.y) },
+          parameters: Object.keys(inst.parameters).sort().reduce((acc, k) => {
+            acc[k] = inst.parameters[k];
+            return acc;
+          }, {})
+        })),
+        nets: sortedNets.map((net) => ({
+          id: net.id,
+          name: net.name,
+          width: net.width,
+          ...net.source ? { source: { instanceId: net.source.instanceId, portId: net.source.portId } } : {},
+          targets: [...net.targets].sort((a, b) => (a.instanceId + a.portId).localeCompare(b.instanceId + b.portId))
+        })),
+        ...design.spec ? {
+          spec: {
+            ...design.spec.targetApplication !== void 0 ? { targetApplication: design.spec.targetApplication } : {},
+            ...design.spec.author !== void 0 ? { author: design.spec.author } : {},
+            ...design.spec.powerBudgetMw !== void 0 ? { powerBudgetMw: design.spec.powerBudgetMw } : {},
+            ...design.spec.maxAreaMm2 !== void 0 ? { maxAreaMm2: design.spec.maxAreaMm2 } : {},
+            ...design.spec.notes !== void 0 ? { notes: design.spec.notes } : {}
+          }
+        } : {},
+        ...design.silicon ? {
+          silicon: {
+            pdkId: design.silicon.pdkId,
+            clockFreqMhz: design.silicon.clockFreqMhz,
+            coreUtilization: design.silicon.coreUtilization,
+            diePreset: design.silicon.diePreset,
+            packageType: design.silicon.packageType,
+            shuttleTarget: design.silicon.shuttleTarget,
+            sramMode: design.silicon.sramMode,
+            includeIoPads: design.silicon.includeIoPads,
+            ...design.silicon.pinEdges ? {
+              pinEdges: Object.keys(design.silicon.pinEdges).sort().reduce((acc, k) => {
+                acc[k] = design.silicon.pinEdges[k];
+                return acc;
+              }, {})
+            } : {}
+          }
+        } : {},
+        metadata: {
+          ...design.metadata,
+          version: design.metadata.version || "1.0"
+        }
+      };
+      return JSON.stringify(sortedDesign, null, 2);
+    }
+    function parseKonaDesign4(jsonString) {
+      try {
+        const raw = JSON.parse(jsonString);
+        const errors = validateKonaDesignSchema(raw);
+        if (errors.length > 0) {
+          return { errors };
+        }
+        return { design: raw, errors: [] };
+      } catch (err) {
+        return { errors: [`JSON Parse error: ${err.message}`] };
+      }
+    }
+  }
+});
+
 // packages/core/dist/pdk/registry.js
 var require_registry2 = __commonJS({
   "packages/core/dist/pdk/registry.js"(exports) {
@@ -1608,7 +1690,7 @@ var require_registry2 = __commonJS({
     exports.PDK_CATALOG = void 0;
     exports.listPdks = listPdks2;
     exports.getPdkDef = getPdkDef;
-    exports.createDefaultSiliconConfig = createDefaultSiliconConfig2;
+    exports.createDefaultSiliconConfig = createDefaultSiliconConfig3;
     exports.PDK_CATALOG = {
       sky130A: {
         id: "sky130A",
@@ -1788,7 +1870,7 @@ var require_registry2 = __commonJS({
     function getPdkDef(pdkId) {
       return exports.PDK_CATALOG[pdkId];
     }
-    function createDefaultSiliconConfig2(pdkId = "sky130A") {
+    function createDefaultSiliconConfig3(pdkId = "sky130A") {
       const pdk = exports.PDK_CATALOG[pdkId] || exports.PDK_CATALOG.sky130A;
       return {
         pdkId: pdk.id,
@@ -3289,6 +3371,127 @@ var require_drc2 = __commonJS({
   }
 });
 
+// packages/core/dist/plain-english.js
+var require_plain_english = __commonJS({
+  "packages/core/dist/plain-english.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.WIZARD_GOALS = exports.PLAIN_MODULE_INFO = void 0;
+    exports.getPlainModuleInfo = getPlainModuleInfo3;
+    exports.PLAIN_MODULE_INFO = {
+      picorv32: {
+        friendlyName: "Chip Brain (RISC-V CPU)",
+        analogy: "The brain of your chip",
+        whatItDoes: "Reads software instructions and tells all other parts what to do."
+      },
+      ibex: {
+        friendlyName: "Secure Chip Brain (Ibex CPU)",
+        analogy: "Security-focused processor",
+        whatItDoes: "Runs software with extra hardware memory protection and fast interrupt handling."
+      },
+      axi_crossbar: {
+        friendlyName: "Data Highway (AXI Bus)",
+        analogy: "Internal traffic router",
+        whatItDoes: "Connects the Chip Brain to Memory and Peripherals so data goes to the right place."
+      },
+      wishbone_crossbar: {
+        friendlyName: "Open Data Highway (Wishbone)",
+        analogy: "Lightweight traffic router",
+        whatItDoes: "Routes read/write requests between the processor, memory, and I/O blocks."
+      },
+      ram_dual_port: {
+        friendlyName: "Working Memory (SRAM)",
+        analogy: "Short-term scratchpad",
+        whatItDoes: "Holds running program code and live sensor/application data."
+      },
+      uart_core: {
+        friendlyName: "Serial / USB Messenger (UART)",
+        analogy: "Text & telemetry port",
+        whatItDoes: "Sends and receives data over two wires to a PC, USB adapter, or radio module."
+      },
+      gpio_controller: {
+        friendlyName: "Physical Pin Bank (GPIO)",
+        analogy: "Lights, switches & relays",
+        whatItDoes: "Turns external pins ON/OFF (LEDs, motors) or reads buttons and switches."
+      },
+      spi_controller: {
+        friendlyName: "Fast Storage / Display Port (SPI)",
+        analogy: "High-speed accessory port",
+        whatItDoes: "Connects external Flash memory chips, SD cards, or small OLED/TFT screens."
+      },
+      i2c_controller: {
+        friendlyName: "Sensor Bus Port (I2C)",
+        analogy: "Two-wire sensor hub",
+        whatItDoes: "Reads temperature, humidity, motion, or power chips using just 2 wires."
+      },
+      timer_core: {
+        friendlyName: "Alarm & Safety Timer",
+        analogy: "Stopwatch & watchdog",
+        whatItDoes: "Measures exact time intervals and resets the chip if software ever gets stuck."
+      },
+      sync_fifo: {
+        friendlyName: "Data Waiting Buffer (FIFO)",
+        analogy: "First-in, first-out queue",
+        whatItDoes: "Temporarily holds bursts of data so fast producers never overwhelm slower ports."
+      },
+      clock_divider: {
+        friendlyName: "Speed Reducer (Clock Divider)",
+        analogy: "Gearbox for chip speed",
+        whatItDoes: "Creates a slower, power-saving clock pulse for sensors or slow peripherals."
+      },
+      clock_gen: {
+        friendlyName: "Chip Heartbeat (Clock & Reset)",
+        analogy: "Metronome & clean start",
+        whatItDoes: "Generates the steady heartbeat pulse and startup reset that keeps every part in sync."
+      }
+    };
+    function getPlainModuleInfo3(moduleId) {
+      return exports.PLAIN_MODULE_INFO[moduleId] || {
+        friendlyName: moduleId,
+        analogy: "Hardware building block",
+        whatItDoes: "Custom digital logic block in your chip architecture."
+      };
+    }
+    exports.WIZARD_GOALS = [
+      {
+        id: "iot_sensor",
+        templateId: "sensor_hub",
+        title: "Smart Sensor & Telemetry Chip",
+        tagline: "Reads environmental/motion sensors and streams data over serial.",
+        bestFor: "Weather stations, factory monitors, wearable trackers"
+      },
+      {
+        id: "mini_computer",
+        templateId: "riscv_mcu",
+        title: "Programmable Mini Computer (MCU)",
+        tagline: "Includes a RISC-V CPU brain, working memory, and serial port.",
+        bestFor: "Smart appliances, custom controllers, learning chip design"
+      },
+      {
+        id: "secure_chip",
+        templateId: "opentitan_rot",
+        title: "Security & Smart-Lock Controller",
+        tagline: "Uses a security-hardened processor, timer, and protected memory.",
+        bestFor: "Smart locks, authentication tokens, tamper-safe devices"
+      },
+      {
+        id: "edge_storage",
+        templateId: "pulpissimo_edge",
+        title: "Edge Controller with Flash & Sensors",
+        tagline: "Combines a CPU brain with high-speed SPI memory and I2C sensors.",
+        bestFor: "Robotics, data loggers, smart meters"
+      },
+      {
+        id: "led_serial",
+        templateId: "uart_loopback",
+        title: "Starter Serial & LED Blinker",
+        tagline: "Simple beginner circuit that buffers serial messages to physical pins.",
+        bestFor: "First-time learners and classroom demos"
+      }
+    ];
+  }
+});
+
 // packages/core/dist/asic-rtl.js
 var require_asic_rtl = __commonJS({
   "packages/core/dist/asic-rtl.js"(exports) {
@@ -4482,8 +4685,9 @@ var require_pdk2 = __commonJS({
 });
 
 // apps/web/src/app.ts
+var import_auto_wire2 = __toESM(require_auto_wire());
 var import_ir3 = __toESM(require_ir());
-var import_catalog7 = __toESM(require_catalog2());
+var import_catalog8 = __toESM(require_catalog2());
 var import_codegen3 = __toESM(require_codegen());
 var import_sim = __toESM(require_sim());
 
@@ -6141,6 +6345,7 @@ var DesignStore = class {
 
 // apps/web/src/components/CatalogPanel.ts
 var import_catalog5 = __toESM(require_catalog2());
+var import_plain_english = __toESM(require_plain_english());
 
 // apps/web/src/utils/html.ts
 function escapeHtml(str) {
@@ -6151,6 +6356,7 @@ function escapeHtml(str) {
 var CatalogPanel = class {
   activeFilter = "all";
   searchQuery = "";
+  simpleMode = false;
   listEl;
   callbacks;
   constructor(callbacks) {
@@ -6158,6 +6364,10 @@ var CatalogPanel = class {
     this.listEl = document.getElementById("catalog-items-list");
     if (!this.listEl) return;
     this.bindControls();
+    this.render();
+  }
+  setSimpleMode(enabled) {
+    this.simpleMode = enabled;
     this.render();
   }
   getFilteredItems() {
@@ -6198,19 +6408,24 @@ var CatalogPanel = class {
     if (items.length === 0) {
       this.listEl.innerHTML = `<div class="catalog-empty"><p>No matching IP modules found.</p></div>`;
     } else {
-      this.listEl.innerHTML = items.map((mod) => `
+      this.listEl.innerHTML = items.map((mod) => {
+        const plain = (0, import_plain_english.getPlainModuleInfo)(mod.id);
+        const title = this.simpleMode ? plain.friendlyName : mod.name;
+        const desc = this.simpleMode ? plain.whatItDoes : mod.description;
+        return `
         <div class="catalog-card" role="button" tabindex="0" draggable="true" data-module-id="${mod.id}" title="${escapeHtml(mod.description)}">
           <div class="catalog-card-header">
-            <span class="catalog-category-tag ${mod.category}">${mod.category}</span>
+            <span class="catalog-category-tag ${mod.category}">${this.simpleMode ? plain.analogy : mod.category}</span>
             <span class="catalog-meta-right">
               <span class="catalog-port-count">${mod.ports.length}p</span>
               <span class="catalog-add-btn">+ Add</span>
             </span>
           </div>
-          <div class="catalog-card-title">${escapeHtml(mod.name)}</div>
-          <div class="catalog-card-desc">${escapeHtml(mod.description)}</div>
+          <div class="catalog-card-title">${escapeHtml(title)}</div>
+          <div class="catalog-card-desc">${escapeHtml(desc)}</div>
         </div>
-      `).join("");
+      `;
+      }).join("");
       this.listEl.querySelectorAll(".catalog-card").forEach((card) => {
         const triggerAdd = () => {
           const modId = card.getAttribute("data-module-id");
@@ -6310,7 +6525,11 @@ var DrcPanel = class {
       panelEl.innerHTML = '<div class="drc-empty">All design rules satisfied. Clean netlist!</div>';
       return;
     }
-    panelEl.innerHTML = diagnostics.map((d) => {
+    const hasFixableWiring = diagnostics.some(
+      (d) => d.rule === "UNCONNECTED_CLOCK" || d.rule === "UNCONNECTED_RESET" || d.rule === "DANGLING_NET"
+    );
+    const fixBannerHtml = hasFixableWiring && this.callbacks.onAutoWire ? `<button type="button" id="btn-auto-wire" class="btn-auto-wire" title="Automatically connect clock and reset pins">Auto-Wire Clocks &amp; Fix</button>` : "";
+    panelEl.innerHTML = fixBannerHtml + diagnostics.map((d) => {
       const targetAttr = d.instanceId ? `data-focus-inst="${escapeHtml(d.instanceId)}"` : d.netId ? `data-focus-net="${escapeHtml(d.netId)}"` : "";
       return `
         <div class="drc-item ${d.severity} ${targetAttr ? "clickable" : ""}" ${targetAttr} title="${targetAttr ? "Click to focus on canvas" : ""}">
@@ -6319,6 +6538,9 @@ var DrcPanel = class {
         </div>
       `;
     }).join("");
+    document.getElementById("btn-auto-wire")?.addEventListener("click", () => {
+      this.callbacks.onAutoWire?.();
+    });
     panelEl.querySelectorAll(".drc-item.clickable").forEach((item) => {
       item.addEventListener("click", () => {
         const instId = item.getAttribute("data-focus-inst");
@@ -6334,6 +6556,7 @@ var DrcPanel = class {
 var import_catalog6 = __toESM(require_catalog2());
 var import_drc4 = __toESM(require_drc2());
 var import_architecture = __toESM(require_architecture());
+var import_plain_english2 = __toESM(require_plain_english());
 var InspectorPanel = class {
   container;
   callbacks;
@@ -6475,6 +6698,7 @@ var InspectorPanel = class {
   renderModuleInspector(diagnostics, inst) {
     if (!this.container) return;
     const modDef = (0, import_catalog6.getModuleDef)(inst.moduleId);
+    const plain = (0, import_plain_english2.getPlainModuleInfo)(inst.moduleId);
     const instDiags = diagnostics.filter((d) => d.instanceId === inst.id);
     let html = `
       <div class="inspector-header">
@@ -6486,6 +6710,10 @@ var InspectorPanel = class {
           </div>
         </div>
         <h3>${escapeHtml(inst.name)}</h3>
+        <div class="plain-guide-card">
+          <strong>${escapeHtml(plain.friendlyName)}</strong>
+          <span>${escapeHtml(plain.whatItDoes)}</span>
+        </div>
         <p class="inspector-desc">${modDef?.description || ""}</p>
       </div>
     `;
@@ -7429,6 +7657,188 @@ var TapeoutPanel = class {
   }
 };
 
+// apps/web/src/components/ChipWizardModal.ts
+var import_auto_wire = __toESM(require_auto_wire());
+var import_catalog7 = __toESM(require_catalog2());
+var import_pdk2 = __toESM(require_pdk2());
+var import_plain_english3 = __toESM(require_plain_english());
+var ChipWizardModal = class {
+  modalEl;
+  bodyEl;
+  callbacks;
+  selectedGoal = "iot_sensor";
+  chipName = "My Smart Chip";
+  speedProfile = "balanced";
+  targetPdk = "gf180mcuD";
+  addons = {
+    gpio: true,
+    i2c: false,
+    spi: false,
+    timer: false
+  };
+  constructor(callbacks) {
+    this.callbacks = callbacks;
+    this.modalEl = document.getElementById("chip-wizard-modal");
+    this.bodyEl = document.getElementById("chip-wizard-body");
+    this.bindStaticEvents();
+  }
+  bindStaticEvents() {
+    document.getElementById("btn-chip-wizard")?.addEventListener("click", () => this.open());
+    document.getElementById("wizard-close-btn")?.addEventListener("click", () => this.close());
+    this.modalEl?.addEventListener("click", (e) => {
+      if (e.target === this.modalEl) this.close();
+    });
+  }
+  open() {
+    if (!this.modalEl) return;
+    this.render();
+    this.modalEl.style.display = "flex";
+  }
+  close() {
+    if (this.modalEl) this.modalEl.style.display = "none";
+  }
+  render() {
+    if (!this.bodyEl) return;
+    this.bodyEl.innerHTML = `
+      <div class="wizard-step-section">
+        <div class="wizard-step-label">Step 1 \xB7 What should your chip do?</div>
+        <div class="wizard-goal-grid">
+          ${import_plain_english3.WIZARD_GOALS.map((g) => `
+            <button type="button" class="wizard-goal-card ${g.id === this.selectedGoal ? "active" : ""}" data-goal="${g.id}">
+              <strong>${escapeHtml(g.title)}</strong>
+              <span>${escapeHtml(g.tagline)}</span>
+              <small>Best for: ${escapeHtml(g.bestFor)}</small>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="wizard-step-section">
+        <div class="wizard-step-label">Step 2 \xB7 Name, Speed &amp; Add-ons</div>
+        <div class="wizard-fields-grid">
+          <label class="spec-field">
+            <span>Give your chip a name</span>
+            <input type="text" id="wizard-chip-name" class="kona-input" value="${escapeHtml(this.chipName)}" />
+          </label>
+
+          <label class="spec-field">
+            <span>Power &amp; Speed Profile</span>
+            <select id="wizard-speed-select" class="kona-input">
+              <option value="battery" ${this.speedProfile === "battery" ? "selected" : ""}>Battery Saver (12 MHz \xB7 Ultra Low Power)</option>
+              <option value="balanced" ${this.speedProfile === "balanced" ? "selected" : ""}>Balanced Everyday (25\u201350 MHz)</option>
+              <option value="fast" ${this.speedProfile === "fast" ? "selected" : ""}>High Performance (80 MHz)</option>
+            </select>
+          </label>
+
+          <label class="spec-field">
+            <span>Manufacturing Node (Optional)</span>
+            <select id="wizard-pdk-select" class="kona-input">
+              <option value="gf180mcuD" ${this.targetPdk === "gf180mcuD" ? "selected" : ""}>180nm Rugged Industrial / 5V (GF180MCU)</option>
+              <option value="sky130A" ${this.targetPdk === "sky130A" ? "selected" : ""}>130nm Standard Open Silicon (SKY130)</option>
+              <option value="sg13g2" ${this.targetPdk === "sg13g2" ? "selected" : ""}>130nm High-Speed BiCMOS (IHP SG13G2)</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="wizard-addons-row">
+          <label class="wizard-addon-chip">
+            <input type="checkbox" id="wizard-addon-gpio" ${this.addons.gpio ? "checked" : ""} />
+            <span>LEDs &amp; Buttons (GPIO)</span>
+          </label>
+          <label class="wizard-addon-chip">
+            <input type="checkbox" id="wizard-addon-i2c" ${this.addons.i2c ? "checked" : ""} />
+            <span>Sensor Port (I2C)</span>
+          </label>
+          <label class="wizard-addon-chip">
+            <input type="checkbox" id="wizard-addon-spi" ${this.addons.spi ? "checked" : ""} />
+            <span>Flash / Display Port (SPI)</span>
+          </label>
+          <label class="wizard-addon-chip">
+            <input type="checkbox" id="wizard-addon-timer" ${this.addons.timer ? "checked" : ""} />
+            <span>Alarm &amp; Safety Timer</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="wizard-footer">
+        <span class="wizard-hint">Kona automatically places blocks, wires clocks/resets, and validates design rules.</span>
+        <button type="button" id="btn-wizard-build" class="btn btn-primary md-btn md-btn-filled">
+          Build My Chip
+        </button>
+      </div>
+    `;
+    this.bodyEl.querySelectorAll(".wizard-goal-card").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const g = btn.getAttribute("data-goal");
+        if (!g) return;
+        this.selectedGoal = g;
+        this.render();
+      });
+    });
+    document.getElementById("wizard-chip-name")?.addEventListener("input", (e) => {
+      this.chipName = e.target.value;
+    });
+    document.getElementById("wizard-speed-select")?.addEventListener("change", (e) => {
+      this.speedProfile = e.target.value;
+    });
+    document.getElementById("wizard-pdk-select")?.addEventListener("change", (e) => {
+      this.targetPdk = e.target.value;
+    });
+    document.getElementById("wizard-addon-gpio")?.addEventListener("change", (e) => {
+      this.addons.gpio = e.target.checked;
+    });
+    document.getElementById("wizard-addon-i2c")?.addEventListener("change", (e) => {
+      this.addons.i2c = e.target.checked;
+    });
+    document.getElementById("wizard-addon-spi")?.addEventListener("change", (e) => {
+      this.addons.spi = e.target.checked;
+    });
+    document.getElementById("wizard-addon-timer")?.addEventListener("change", (e) => {
+      this.addons.timer = e.target.checked;
+    });
+    document.getElementById("btn-wizard-build")?.addEventListener("click", () => this.buildChip());
+  }
+  buildChip() {
+    const goal = import_plain_english3.WIZARD_GOALS.find((g) => g.id === this.selectedGoal) || import_plain_english3.WIZARD_GOALS[0];
+    const tmpl = import_catalog7.STARTER_TEMPLATES.find((t) => t.id === goal.templateId) || import_catalog7.STARTER_TEMPLATES[0];
+    const design = tmpl.createDesign();
+    const cleanName = this.chipName.trim() || goal.title;
+    design.name = cleanName;
+    design.topModule = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^[0-9]/, "chip_$&") || "my_chip";
+    const silicon = (0, import_pdk2.createDefaultSiliconConfig)(this.targetPdk);
+    if (this.speedProfile === "battery") {
+      silicon.clockFreqMhz = 12;
+    } else if (this.speedProfile === "fast") {
+      silicon.clockFreqMhz = this.targetPdk === "gf180mcuD" ? 50 : 80;
+    }
+    design.silicon = silicon;
+    design.spec = {
+      targetApplication: goal.title,
+      author: "Created with Kona Chip Wizard",
+      powerBudgetMw: this.speedProfile === "battery" ? 25 : 100
+    };
+    const addAddonIfMissing = (moduleId, instName, params) => {
+      if (design.instances.some((i) => i.moduleId === moduleId)) return;
+      const maxX = Math.max(...design.instances.map((i) => i.position.x), 400);
+      const maxY = Math.max(...design.instances.map((i) => i.position.y), 120);
+      design.instances.push({
+        id: `${moduleId}_wiz_${Date.now()}_${Math.floor(Math.random() * 100)}`,
+        moduleId,
+        name: instName,
+        position: { x: maxX, y: maxY + 260 },
+        parameters: params
+      });
+    };
+    if (this.addons.gpio) addAddonIfMissing("gpio_controller", "u_gpio_pins", { WIDTH: 8 });
+    if (this.addons.i2c) addAddonIfMissing("i2c_controller", "u_i2c_sensors", { PRESCALE: 125 });
+    if (this.addons.spi) addAddonIfMissing("spi_controller", "u_spi_port", { CLK_DIV: 8, DATA_WIDTH: 8 });
+    if (this.addons.timer) addAddonIfMissing("timer_core", "u_sys_timer", { PRESCALER: 50 });
+    const { design: wired } = (0, import_auto_wire.autoWireDesign)(design);
+    this.close();
+    this.callbacks.onCreateDesign(wired, `Built "${cleanName}" (${wired.instances.length} blocks, auto-wired)!`);
+  }
+};
+
 // apps/web/src/components/LayoutResizer.ts
 var DESKTOP_STORAGE_KEY = "kona.layout.sizes.v1";
 var MOBILE_STORAGE_KEY = "kona.layout.mobile.sizes.v1";
@@ -7821,13 +8231,16 @@ var KonaApp = class {
   inspectorPanel;
   rtlPreviewPanel;
   tapeoutPanel;
+  catalogPanel;
+  wizardModal;
   layoutResizer;
   drawerState = "normal";
+  simpleMode = false;
   constructor() {
     const initialHash = typeof window !== "undefined" ? window.location.hash : "";
     const hasCompressedHash = initialHash.startsWith("#z=");
     const loaded = hasCompressedHash ? null : loadDesignFromHash();
-    const defaultTemplate = import_catalog7.STARTER_TEMPLATES[0];
+    const defaultTemplate = import_catalog8.STARTER_TEMPLATES[0];
     const initialDesign = loaded?.design || defaultTemplate.createDesign();
     const initialTemplateId = loaded ? loaded.templateId : hasCompressedHash ? void 0 : defaultTemplate.id;
     const initialDirty = loaded ? !loaded.templateId : hasCompressedHash;
@@ -7861,7 +8274,8 @@ var KonaApp = class {
         this.syncMobileBackdrop();
         this.layoutResizer.syncHandleVisibility();
         this.canvas.resize();
-      }
+      },
+      onAutoWire: () => this.runAutoWire(false)
     });
     this.inspectorPanel = new InspectorPanel({
       onMutate: () => {
@@ -7892,11 +8306,22 @@ var KonaApp = class {
         this.store.commitMutation(design);
       }
     });
-    new CatalogPanel({
+    this.catalogPanel = new CatalogPanel({
       onAddModule: (moduleId) => {
         this.canvas.addModule(moduleId);
+        if (this.simpleMode) {
+          this.runAutoWire(true);
+        }
         if (this.isMobileLayout()) this.closeMobileSidebars();
         showToast(`Added ${moduleId} to canvas`, "success");
+      }
+    });
+    this.wizardModal = new ChipWizardModal({
+      onCreateDesign: (wiredDesign, summaryMessage) => {
+        this.canvas.setDesign(wiredDesign);
+        this.store.loadTemplateDesign(wiredDesign);
+        this.canvas.fitToScreen();
+        showToast(summaryMessage, "success");
       }
     });
     this.bindCanvasEvents();
@@ -7908,6 +8333,7 @@ var KonaApp = class {
     this.setupSidebarToggles();
     this.setupBottomDrawerTabs();
     this.setupSimulationControls();
+    this.setupSimpleMode();
     this.layoutResizer = new LayoutResizer({
       onLayoutChange: () => {
         this.canvas.resize();
@@ -8028,7 +8454,7 @@ var KonaApp = class {
     container.innerHTML = `
       <label class="picker-label" for="template-select">Template:</label>
       <select id="template-select" class="kona-select">
-        ${import_catalog7.STARTER_TEMPLATES.map((t) => `<option value="${t.id}">${t.name}</option>`).join("")}
+        ${import_catalog8.STARTER_TEMPLATES.map((t) => `<option value="${t.id}">${t.name}</option>`).join("")}
         <option value="__blank__">+ Blank Custom Chip</option>
       </select>
     `;
@@ -8060,7 +8486,7 @@ var KonaApp = class {
         showToast("Started blank custom chip", "info");
         return;
       }
-      const tmpl = import_catalog7.STARTER_TEMPLATES.find((t) => t.id === selectEl.value);
+      const tmpl = import_catalog8.STARTER_TEMPLATES.find((t) => t.id === selectEl.value);
       if (!tmpl) return;
       if (this.store.isDesignDirty() && !confirm(`Load template "${tmpl.name}"? Unsaved canvas edits will be replaced.`)) {
         selectEl.value = lastValue;
@@ -8104,6 +8530,9 @@ var KonaApp = class {
       this.canvas.setGridSnap(next);
       snapBtn.classList.toggle("active", next);
       if (snapLabel) snapLabel.textContent = next ? "Grid Snap: 20px" : "Grid Snap: Off";
+    });
+    document.getElementById("btn-canvas-auto-wire")?.addEventListener("click", () => {
+      this.runAutoWire(false);
     });
     document.getElementById("btn-canvas-inspect")?.addEventListener("click", () => {
       if (this.isMobileLayout()) {
@@ -8348,7 +8777,55 @@ var KonaApp = class {
         if (simStatus) {
           simStatus.textContent = `Completed ${result.totalCycles} cycles in ${result.durationMs}ms`;
         }
+        const sigCount = result.trace.signals.length;
+        showToast(`Chip tested for ${result.totalCycles} clock cycles (${sigCount} signals active). Click timeline to inspect!`, "success");
       }, 40);
+    });
+  }
+  runAutoWire(silentIfNoOp) {
+    const { design: wired, summary } = (0, import_auto_wire2.autoWireDesign)(this.store.getDesign());
+    const changes = summary.connectedClocks + summary.connectedResets + summary.removedOrphanNets + (summary.createdClockGen ? 1 : 0);
+    if (changes === 0) {
+      if (!silentIfNoOp) showToast("All clock & reset pins are already connected!", "info");
+      return;
+    }
+    this.canvas.setDesign(wired);
+    this.store.commitMutation(wired);
+    this.canvas.fitToScreen();
+    if (!silentIfNoOp) {
+      showToast(`Auto-wired ${summary.connectedClocks} clock and ${summary.connectedResets} reset pin(s)`, "success");
+    }
+  }
+  setupSimpleMode() {
+    const btn = document.getElementById("btn-simple-mode");
+    const applyMode = (enabled) => {
+      this.simpleMode = enabled;
+      document.body.classList.toggle("simple-mode", enabled);
+      this.catalogPanel.setSimpleMode(enabled);
+      if (btn) {
+        btn.classList.toggle("active", enabled);
+        btn.setAttribute("aria-pressed", String(enabled));
+        const lbl = btn.querySelector(".btn-label");
+        if (lbl) lbl.textContent = enabled ? "Simple: On" : "Simple Mode";
+      }
+      try {
+        window.localStorage?.setItem("kona.simpleMode", enabled ? "1" : "0");
+      } catch {
+      }
+    };
+    try {
+      if (window.localStorage?.getItem("kona.simpleMode") === "1") {
+        applyMode(true);
+      }
+    } catch {
+    }
+    btn?.addEventListener("click", () => {
+      const next = !this.simpleMode;
+      applyMode(next);
+      showToast(
+        next ? "Simple Mode enabled: plain-English labels & auto-wiring active" : "Engineer Mode enabled",
+        "info"
+      );
     });
   }
 };

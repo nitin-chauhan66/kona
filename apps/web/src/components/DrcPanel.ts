@@ -5,6 +5,7 @@ export interface DrcPanelCallbacks {
   onFocusInstance: (instanceId: string) => void;
   onFocusNet: (netId: string) => void;
   onEnsureVisible: () => void;
+  onAutoWire?: () => void;
 }
 
 /**
@@ -92,7 +93,15 @@ export class DrcPanel {
       return;
     }
 
-    panelEl.innerHTML = diagnostics.map(d => {
+    const hasFixableWiring = diagnostics.some(
+      d => d.rule === 'UNCONNECTED_CLOCK' || d.rule === 'UNCONNECTED_RESET' || d.rule === 'DANGLING_NET'
+    );
+
+    const fixBannerHtml = hasFixableWiring && this.callbacks.onAutoWire
+      ? `<button type="button" id="btn-auto-wire" class="btn-auto-wire" title="Automatically connect clock and reset pins">Auto-Wire Clocks &amp; Fix</button>`
+      : '';
+
+    panelEl.innerHTML = fixBannerHtml + diagnostics.map(d => {
       const targetAttr = d.instanceId
         ? `data-focus-inst="${escapeHtml(d.instanceId)}"`
         : d.netId
@@ -105,6 +114,10 @@ export class DrcPanel {
         </div>
       `;
     }).join('');
+
+    document.getElementById('btn-auto-wire')?.addEventListener('click', () => {
+      this.callbacks.onAutoWire?.();
+    });
 
     panelEl.querySelectorAll('.drc-item.clickable').forEach(item => {
       item.addEventListener('click', () => {

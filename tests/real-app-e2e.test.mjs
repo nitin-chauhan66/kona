@@ -238,6 +238,30 @@ test('Real App: DOM Initialization and Lifecycle in Browser Environment', async 
   templateSelect.value = '__blank__';
   templateSelect.dispatchEvent(new window.Event('change'));
   assert.ok(window.document.getElementById('canvas-stats-text').textContent.startsWith('0 blocks'));
+
+  // 13. Beginner Democratization: Simple Mode, Chip Wizard, and 1-Click Auto-Wire
+  const simpleBtn = window.document.getElementById('btn-simple-mode');
+  simpleBtn.click();
+  assert.ok(window.document.body.classList.contains('simple-mode'), 'Simple Mode toggles body class');
+  assert.ok(
+    window.document.getElementById('catalog-items-list').textContent.includes('Chip Brain'),
+    'Simple Mode shows plain-English catalog titles'
+  );
+  simpleBtn.click();
+
+  window.document.getElementById('btn-chip-wizard').click();
+  assert.equal(window.document.getElementById('chip-wizard-modal').style.display, 'flex');
+  const wizName = window.document.getElementById('wizard-chip-name');
+  wizName.value = 'My Weather Chip';
+  wizName.dispatchEvent(new window.Event('input'));
+  const i2cBox = window.document.getElementById('wizard-addon-i2c');
+  i2cBox.checked = true;
+  i2cBox.dispatchEvent(new window.Event('change'));
+  window.document.getElementById('btn-wizard-build').click();
+
+  assert.equal(window.document.getElementById('chip-wizard-modal').style.display, 'none');
+  assert.equal(drcChip.textContent, 'DRC Passed', 'Wizard-built chip with add-ons is auto-wired and DRC clean');
+  assert.ok(svOutput.textContent.includes('module my_weather_chip ('), 'Wizard sets clean top module name');
 });
 
 test('Real App: Mobile viewport (390px) auto-collapses drawers and manages overlay scrim', async () => {

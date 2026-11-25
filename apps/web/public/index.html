@@ -29,6 +29,10 @@
     </div>
 
     <div class="header-center">
+      <button id="btn-chip-wizard" class="btn btn-secondary md-btn md-btn-tonal wizard-launch-btn" title="Guided 3-step chip builder for beginners">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+        <span>Chip Wizard</span>
+      </button>
       <div id="templates-picker" class="picker-container"></div>
       <div id="drc-status-chip" class="status-chip success md-chip" title="Click to view DRC diagnostics" role="button" tabindex="0">Checking DRC...</div>
     </div>
@@ -67,6 +71,10 @@
       <button id="btn-export-sv" class="btn btn-primary md-btn md-btn-filled" title="Export synthesizable SystemVerilog top.sv">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         <span class="btn-label">Export top.sv</span>
+      </button>
+
+      <button id="btn-simple-mode" class="btn btn-secondary md-btn md-btn-tonal" title="Switch between Simple beginner labels and Engineer mode" aria-pressed="false">
+        <span class="btn-label">Simple Mode</span>
       </button>
 
       <button id="btn-shortcuts" class="icon-btn icon-help md-icon-button" title="Keyboard Shortcuts (?)" aria-label="Keyboard Shortcuts">
@@ -161,6 +169,10 @@
         <div class="toolbar-divider"></div>
 
         <div class="canvas-tool-group">
+          <button id="btn-canvas-auto-wire" class="canvas-tool-btn" title="Auto-connect all clock &amp; reset pins">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            <span>Auto-Wire</span>
+          </button>
           <button id="btn-canvas-inspect" class="canvas-tool-btn" title="Inspect Selected Block or Wire" disabled>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
             <span>Inspect</span>
@@ -336,6 +348,20 @@
       <div class="md-dialog-actions">
         <button id="modal-confirm-btn" class="btn btn-primary md-btn md-btn-filled">Got it</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Guided 3-Step Chip Builder Wizard Modal -->
+  <div id="chip-wizard-modal" class="modal-backdrop" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+    <div class="modal-card md-dialog wizard-dialog">
+      <div class="modal-header md-dialog-header">
+        <div class="dialog-title-group">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+          <h3 id="wizard-title">Build a Chip in 30 Seconds</h3>
+        </div>
+        <button id="wizard-close-btn" class="modal-close md-icon-button" aria-label="Close wizard">&times;</button>
+      </div>
+      <div id="chip-wizard-body" class="wizard-body"></div>
     </div>
   </div>
 
