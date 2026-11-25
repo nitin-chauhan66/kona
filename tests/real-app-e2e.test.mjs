@@ -342,3 +342,78 @@ test('Real App: Sidebars, DRC panel, and bottom section are resizable and persis
   leftHandle.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
   assert.equal(leftSidebar.style.getPropertyValue('--sidebar-left-width'), '');
 });
+
+test('Real App: Mobile viewport (390px) supports touch resizing of overlay drawers and bottom sheet', async () => {
+  const htmlPath = path.resolve(__dirname, '../apps/web/public/index.html');
+  const bundlePath = path.resolve(__dirname, '../apps/web/public/bundle.js');
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  const bundleJs = fs.readFileSync(bundlePath, 'utf8');
+
+  const dom = new JSDOM(html, {
+    url: 'http://localhost:4173/',
+    runScripts: 'dangerously'
+  });
+  const { window } = dom;
+  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+  Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true });
+
+  const storeMap = new Map();
+  Object.defineProperty(window, 'localStorage', {
+    value: {
+      getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+      setItem: (k, v) => { storeMap.set(k, String(v)); },
+      removeItem: (k) => { storeMap.delete(k); }
+    },
+    configurable: true
+  });
+
+  const dummyCtx = {
+    save: () => {}, restore: () => {}, clearRect: () => {}, beginPath: () => {},
+    closePath: () => {}, moveTo: () => {}, lineTo: () => {}, stroke: () => {},
+    fill: () => {}, arc: () => {}, roundRect: () => {}, fillRect: () => {},
+    strokeRect: () => {}, fillText: () => {}, measureText: () => ({ width: 60 }),
+    setLineDash: () => {}, scale: () => {}, translate: () => {},
+    canvas: { width: 390, height: 600 }
+  };
+  window.HTMLCanvasElement.prototype.getContext = () => dummyCtx;
+  window.HTMLCanvasElement.prototype.getBoundingClientRect = () => ({
+    left: 0, top: 0, width: 390, height: 600, right: 390, bottom: 600
+  });
+  window.confirm = () => true;
+
+  window.eval(bundleJs);
+  window.dispatchEvent(new window.Event('DOMContentLoaded'));
+
+  const workspace = window.document.querySelector('.app-workspace');
+  const leftSidebar = window.document.querySelector('.sidebar-left');
+  const leftHandle = window.document.getElementById('resizer-left-sidebar');
+  const bottomDrawer = window.document.getElementById('app-bottom-drawer');
+  const bottomHandle = window.document.getElementById('resizer-bottom-drawer');
+
+  // 1. Open left overlay drawer and resize wider (328 -> 350px within 92% mobile cap = 358px)
+  window.document.getElementById('btn-toggle-left-sidebar').click();
+  assert.ok(!leftHandle.classList.contains('is-hidden'), 'Left handle shows when mobile drawer opens');
+  leftHandle.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 328, clientY: 200 }));
+  window.dispatchEvent(new window.MouseEvent('mousemove', { bubbles: true, button: 0, clientX: 350, clientY: 200 }));
+  window.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, button: 0, clientX: 350, clientY: 200 }));
+  assert.equal(leftSidebar.style.getPropertyValue('--sidebar-left-width'), '350px');
+  assert.equal(workspace.style.getPropertyValue('--sidebar-left-width'), '350px');
+
+  // 2. Drag minimized mobile bottom sheet upward (60 + 200 = 260px)
+  assert.ok(bottomDrawer.classList.contains('minimized'));
+  bottomHandle.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 195, clientY: 784 }));
+  window.dispatchEvent(new window.MouseEvent('mousemove', { bubbles: true, button: 0, clientX: 195, clientY: 584 }));
+  window.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, button: 0, clientX: 195, clientY: 584 }));
+  assert.ok(!bottomDrawer.classList.contains('minimized'), 'Dragging up restores mobile bottom sheet');
+  assert.equal(bottomDrawer.style.getPropertyValue('--bottom-drawer-height'), '260px');
+
+  // 3. Dragging mobile bottom sheet down below threshold snaps back to minimized while keeping 260px
+  bottomHandle.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 195, clientY: 584 }));
+  window.dispatchEvent(new window.MouseEvent('mousemove', { bubbles: true, button: 0, clientX: 195, clientY: 804 }));
+  window.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, button: 0, clientX: 195, clientY: 804 }));
+  assert.ok(bottomDrawer.classList.contains('minimized'), 'Dragging down past threshold minimizes bottom sheet');
+  assert.equal(bottomDrawer.style.getPropertyValue('--bottom-drawer-height'), '260px');
+
+  // 4. Mobile layout sizes persist under mobile-specific localStorage key
+  assert.ok(storeMap.has('kona.layout.mobile.sizes.v1'), 'Mobile sizes persist separately from desktop');
+});

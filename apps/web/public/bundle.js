@@ -4689,21 +4689,32 @@ var WaveformViewer = class {
 };
 
 // apps/web/src/components/LayoutResizer.ts
-var STORAGE_KEY = "kona.layout.sizes.v1";
+var DESKTOP_STORAGE_KEY = "kona.layout.sizes.v1";
+var MOBILE_STORAGE_KEY = "kona.layout.mobile.sizes.v1";
+var MOBILE_BREAKPOINT = 900;
 var MIN_CANVAS_WIDTH = 240;
 var MIN_CANVAS_HEIGHT = 120;
 var HEADER_FALLBACK_HEIGHT = 54;
+var BOTTOM_MINIMIZE_THRESHOLD = 68;
 var LayoutResizer = class {
   callbacks;
   sections = [];
   customSizes = {};
+  lastMobileMode;
   constructor(callbacks) {
     this.callbacks = callbacks;
+    this.lastMobileMode = this.isMobileViewport();
     this.loadPersistedSizes();
     this.registerSections();
     this.applySavedSizes();
     this.bindAll();
     this.syncHandleVisibility();
+  }
+  isMobileViewport() {
+    return typeof window !== "undefined" && (window.innerWidth || 1280) <= MOBILE_BREAKPOINT;
+  }
+  getStorageKey() {
+    return this.isMobileViewport() ? MOBILE_STORAGE_KEY : DESKTOP_STORAGE_KEY;
   }
   registerSections() {
     const leftPanel = document.querySelector(".sidebar-left");
@@ -4719,7 +4730,8 @@ var LayoutResizer = class {
         defaultSize: 278,
         minSize: 200,
         getMaxSize: () => this.getMaxSidebarWidth("left"),
-        isCollapsed: () => leftPanel.classList.contains("collapsed")
+        isCollapsed: () => leftPanel.classList.contains("collapsed"),
+        workspaceMirror: true
       });
     }
     const rightPanel = document.querySelector(".sidebar-right");
@@ -4735,7 +4747,8 @@ var LayoutResizer = class {
         defaultSize: 308,
         minSize: 220,
         getMaxSize: () => this.getMaxSidebarWidth("right"),
-        isCollapsed: () => rightPanel.classList.contains("collapsed")
+        isCollapsed: () => rightPanel.classList.contains("collapsed"),
+        workspaceMirror: true
       });
     }
     const bottomPanel = document.getElementById("app-bottom-drawer");
@@ -4758,6 +4771,11 @@ var LayoutResizer = class {
             bottomPanel.style.setProperty("--bottom-drawer-height", `${currentHeight}px`);
             this.callbacks.onBottomDrawerRestore?.();
           }
+        },
+        onMinimize: () => {
+          bottomPanel.classList.remove("expanded");
+          bottomPanel.classList.add("minimized");
+          this.callbacks.onBottomDrawerMinimize?.();
         }
       });
     }
@@ -4778,13 +4796,20 @@ var LayoutResizer = class {
       });
     }
   }
+  getWorkspaceEl() {
+    return document.querySelector(".app-workspace");
+  }
   getWorkspaceWidth() {
-    const workspace = document.querySelector(".app-workspace");
+    const workspace = this.getWorkspaceEl();
     const rectWidth = workspace?.getBoundingClientRect().width || 0;
     return rectWidth > 0 ? rectWidth : window.innerWidth || 1280;
   }
   getMaxSidebarWidth(side) {
     const workspaceWidth = this.getWorkspaceWidth();
+    const minWidth = side === "left" ? 200 : 220;
+    if (this.isMobileViewport()) {
+      return Math.max(minWidth, Math.min(480, Math.floor(workspaceWidth * 0.92)));
+    }
     const otherSelector = side === "left" ? ".sidebar-right" : ".sidebar-left";
     const otherSidebar = document.querySelector(otherSelector);
     let otherWidth = 0;
@@ -4794,14 +4819,13 @@ var LayoutResizer = class {
       otherWidth = this.measureSize(otherSidebar, otherVar, fallback);
     }
     const hardCap = side === "left" ? 520 : 560;
-    const minWidth = side === "left" ? 200 : 220;
     return Math.max(minWidth, Math.min(hardCap, Math.floor(workspaceWidth - otherWidth - MIN_CANVAS_WIDTH)));
   }
   getMaxBottomHeight() {
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
     const header = document.querySelector(".app-header");
     const headerHeight = header?.getBoundingClientRect().height || HEADER_FALLBACK_HEIGHT;
-    const ratioCap = Math.floor(viewportHeight * 0.75);
+    const ratioCap = Math.floor(viewportHeight * (this.isMobileViewport() ? 0.8 : 0.75));
     const spaceCap = Math.floor(viewportHeight - headerHeight - MIN_CANVAS_HEIGHT);
     return Math.max(88, Math.min(ratioCap, spaceCap));
   }
@@ -4817,20 +4841,37 @@ var LayoutResizer = class {
     const measured = isHorizontal ? rect.width : rect.height;
     if (measured > 0) return Math.round(measured);
     if (panel.id === "app-bottom-drawer") {
-      if (panel.classList.contains("minimized")) return 44;
+      if (panel.classList.contains("minimized")) return this.isMobileViewport() ? 60 : 44;
       if (panel.classList.contains("expanded")) return 440;
     }
     const varVal = parseFloat(panel.style.getPropertyValue(cssVar));
     if (Number.isFinite(varVal) && varVal > 0) return Math.round(varVal);
+    if (this.isMobileViewport() && isHorizontal) {
+      const vw = this.getWorkspaceWidth();
+      return Math.round(Math.min(vw * 0.92, Math.max(220, vw * 0.84)));
+    }
     return fallback;
   }
   clampSize(size, min, max) {
     return Math.max(min, Math.min(Math.max(min, max), Math.round(size)));
   }
+  setCssVar(config, value) {
+    if (value === null) {
+      config.panel.style.removeProperty(config.cssVar);
+      if (config.workspaceMirror) {
+        this.getWorkspaceEl()?.style.removeProperty(config.cssVar);
+      }
+    } else {
+      config.panel.style.setProperty(config.cssVar, value);
+      if (config.workspaceMirror) {
+        this.getWorkspaceEl()?.style.setProperty(config.cssVar, value);
+      }
+    }
+  }
   applySize(config, size, persist) {
     const max = config.getMaxSize();
     const clamped = this.clampSize(size, config.minSize, max);
-    config.panel.style.setProperty(config.cssVar, `${clamped}px`);
+    this.setCssVar(config, `${clamped}px`);
     config.handle.setAttribute("aria-valuenow", String(clamped));
     config.handle.setAttribute("aria-valuemax", String(max));
     this.customSizes[config.id] = clamped;
@@ -4841,7 +4882,7 @@ var LayoutResizer = class {
   }
   resetSize(config) {
     config.onBeforeResize?.();
-    config.panel.style.removeProperty(config.cssVar);
+    this.setCssVar(config, null);
     delete this.customSizes[config.id];
     config.handle.setAttribute("aria-valuenow", String(config.defaultSize));
     this.savePersistedSizes();
@@ -4861,8 +4902,10 @@ var LayoutResizer = class {
       e.preventDefault();
       const startCoord = config.axis === "horizontal" ? e.clientX : e.clientY;
       const startSize = this.measureSize(config.panel, config.cssVar, config.defaultSize);
+      const prevCustomSize = this.customSizes[config.id];
       const bodyClass = config.axis === "horizontal" ? "is-resizing-col" : "is-resizing-row";
       let hasDragged = false;
+      let lastRawSize = startSize;
       config.handle.classList.add("active");
       config.panel.classList.add("is-resizing-panel");
       document.body.classList.add(bodyClass);
@@ -4881,7 +4924,8 @@ var LayoutResizer = class {
           hasDragged = true;
           config.onBeforeResize?.();
         }
-        this.applySize(config, startSize + delta, false);
+        lastRawSize = startSize + delta;
+        this.applySize(config, lastRawSize, false);
         this.callbacks.onLayoutChange();
       };
       const onEnd = () => {
@@ -4901,6 +4945,15 @@ var LayoutResizer = class {
           }
         }
         if (hasDragged) {
+          if (config.onMinimize && lastRawSize < BOTTOM_MINIMIZE_THRESHOLD) {
+            if (typeof prevCustomSize === "number") {
+              this.applySize(config, prevCustomSize, false);
+            } else {
+              this.setCssVar(config, null);
+              delete this.customSizes[config.id];
+            }
+            config.onMinimize();
+          }
           this.savePersistedSizes();
           this.callbacks.onLayoutChange();
         }
@@ -4949,8 +5002,8 @@ var LayoutResizer = class {
       }
       if (delta === 0) return;
       e.preventDefault();
-      config.onBeforeResize?.();
       const current = this.measureSize(config.panel, config.cssVar, config.defaultSize);
+      config.onBeforeResize?.();
       this.applySize(config, current + delta, true);
       this.callbacks.onLayoutChange();
     });
@@ -4962,6 +5015,17 @@ var LayoutResizer = class {
     }
   }
   clampAll() {
+    const mobileNow = this.isMobileViewport();
+    if (mobileNow !== this.lastMobileMode) {
+      this.lastMobileMode = mobileNow;
+      for (const config of this.sections) {
+        this.setCssVar(config, null);
+      }
+      this.loadPersistedSizes();
+      this.applySavedSizes();
+      this.syncHandleVisibility();
+      return;
+    }
     for (const config of this.sections) {
       const saved = this.customSizes[config.id];
       if (typeof saved === "number") {
@@ -4979,8 +5043,9 @@ var LayoutResizer = class {
     }
   }
   loadPersistedSizes() {
+    this.customSizes = {};
     try {
-      const raw = window.localStorage?.getItem(STORAGE_KEY);
+      const raw = window.localStorage?.getItem(this.getStorageKey());
       if (!raw) return;
       const parsed = JSON.parse(raw);
       for (const key of ["left", "right", "bottom", "drc"]) {
@@ -4995,10 +5060,11 @@ var LayoutResizer = class {
   savePersistedSizes() {
     try {
       if (!window.localStorage) return;
+      const key = this.getStorageKey();
       if (Object.keys(this.customSizes).length === 0) {
-        window.localStorage.removeItem(STORAGE_KEY);
+        window.localStorage.removeItem(key);
       } else {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.customSizes));
+        window.localStorage.setItem(key, JSON.stringify(this.customSizes));
       }
     } catch {
     }
@@ -5109,6 +5175,10 @@ var KonaApp = class {
       },
       onBottomDrawerRestore: () => {
         this.drawerState = "normal";
+        this.syncBottomDrawerToggleIcon();
+      },
+      onBottomDrawerMinimize: () => {
+        this.drawerState = "minimized";
         this.syncBottomDrawerToggleIcon();
       }
     });

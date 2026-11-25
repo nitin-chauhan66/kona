@@ -129,6 +129,10 @@ export class KonaApp {
       onBottomDrawerRestore: () => {
         this.drawerState = 'normal';
         this.syncBottomDrawerToggleIcon();
+      },
+      onBottomDrawerMinimize: () => {
+        this.drawerState = 'minimized';
+        this.syncBottomDrawerToggleIcon();
       }
     });
     this.layoutResizer.syncHandleVisibility();

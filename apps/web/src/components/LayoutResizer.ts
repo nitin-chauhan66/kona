@@ -3,6 +3,7 @@ export type ResizableSectionId = 'left' | 'right' | 'bottom' | 'drc';
 export interface LayoutResizerCallbacks {
   onLayoutChange: () => void;
   onBottomDrawerRestore?: () => void;
+  onBottomDrawerMinimize?: () => void;
 }
 
 interface ResizableSectionConfig {
@@ -17,32 +18,47 @@ interface ResizableSectionConfig {
   getMaxSize: () => number;
   isCollapsed?: () => boolean;
   onBeforeResize?: () => void;
+  onMinimize?: () => void;
+  workspaceMirror?: boolean;
 }
 
 type PersistedSizes = Partial<Record<ResizableSectionId, number>>;
 
-const STORAGE_KEY = 'kona.layout.sizes.v1';
+const DESKTOP_STORAGE_KEY = 'kona.layout.sizes.v1';
+const MOBILE_STORAGE_KEY = 'kona.layout.mobile.sizes.v1';
+const MOBILE_BREAKPOINT = 900;
 const MIN_CANVAS_WIDTH = 240;
 const MIN_CANVAS_HEIGHT = 120;
 const HEADER_FALLBACK_HEIGHT = 54;
+const BOTTOM_MINIMIZE_THRESHOLD = 68;
 
 /**
  * Manages drag-to-resize and keyboard-accessible splitters for the sidebars,
- * bottom section, and DRC diagnostics sub-panel, with viewport clamping and
- * localStorage persistence.
+ * bottom section, and DRC diagnostics sub-panel, with responsive mobile/desktop
+ * profiles, viewport clamping, and localStorage persistence.
  */
 export class LayoutResizer {
   private readonly callbacks: LayoutResizerCallbacks;
   private readonly sections: ResizableSectionConfig[] = [];
-  private readonly customSizes: PersistedSizes = {};
+  private customSizes: PersistedSizes = {};
+  private lastMobileMode: boolean;
 
   constructor(callbacks: LayoutResizerCallbacks) {
     this.callbacks = callbacks;
+    this.lastMobileMode = this.isMobileViewport();
     this.loadPersistedSizes();
     this.registerSections();
     this.applySavedSizes();
     this.bindAll();
     this.syncHandleVisibility();
+  }
+
+  private isMobileViewport(): boolean {
+    return typeof window !== 'undefined' && (window.innerWidth || 1280) <= MOBILE_BREAKPOINT;
+  }
+
+  private getStorageKey(): string {
+    return this.isMobileViewport() ? MOBILE_STORAGE_KEY : DESKTOP_STORAGE_KEY;
   }
 
   private registerSections(): void {
@@ -59,7 +75,8 @@ export class LayoutResizer {
         defaultSize: 278,
         minSize: 200,
         getMaxSize: () => this.getMaxSidebarWidth('left'),
-        isCollapsed: () => leftPanel.classList.contains('collapsed')
+        isCollapsed: () => leftPanel.classList.contains('collapsed'),
+        workspaceMirror: true
       });
     }
 
@@ -76,7 +93,8 @@ export class LayoutResizer {
         defaultSize: 308,
         minSize: 220,
         getMaxSize: () => this.getMaxSidebarWidth('right'),
-        isCollapsed: () => rightPanel.classList.contains('collapsed')
+        isCollapsed: () => rightPanel.classList.contains('collapsed'),
+        workspaceMirror: true
       });
     }
 
@@ -100,6 +118,11 @@ export class LayoutResizer {
             bottomPanel.style.setProperty('--bottom-drawer-height', `${currentHeight}px`);
             this.callbacks.onBottomDrawerRestore?.();
           }
+        },
+        onMinimize: () => {
+          bottomPanel.classList.remove('expanded');
+          bottomPanel.classList.add('minimized');
+          this.callbacks.onBottomDrawerMinimize?.();
         }
       });
     }
@@ -122,14 +145,25 @@ export class LayoutResizer {
     }
   }
 
+  private getWorkspaceEl(): HTMLElement | null {
+    return document.querySelector('.app-workspace') as HTMLElement | null;
+  }
+
   private getWorkspaceWidth(): number {
-    const workspace = document.querySelector('.app-workspace') as HTMLElement | null;
+    const workspace = this.getWorkspaceEl();
     const rectWidth = workspace?.getBoundingClientRect().width || 0;
     return rectWidth > 0 ? rectWidth : (window.innerWidth || 1280);
   }
 
   private getMaxSidebarWidth(side: 'left' | 'right'): number {
     const workspaceWidth = this.getWorkspaceWidth();
+    const minWidth = side === 'left' ? 200 : 220;
+
+    // On <= 900px mobile/tablet viewports, sidebars are slide-over overlays, not side-by-side
+    if (this.isMobileViewport()) {
+      return Math.max(minWidth, Math.min(480, Math.floor(workspaceWidth * 0.92)));
+    }
+
     const otherSelector = side === 'left' ? '.sidebar-right' : '.sidebar-left';
     const otherSidebar = document.querySelector(otherSelector) as HTMLElement | null;
     let otherWidth = 0;
@@ -139,7 +173,6 @@ export class LayoutResizer {
       otherWidth = this.measureSize(otherSidebar, otherVar, fallback);
     }
     const hardCap = side === 'left' ? 520 : 560;
-    const minWidth = side === 'left' ? 200 : 220;
     return Math.max(minWidth, Math.min(hardCap, Math.floor(workspaceWidth - otherWidth - MIN_CANVAS_WIDTH)));
   }
 
@@ -147,7 +180,7 @@ export class LayoutResizer {
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
     const header = document.querySelector('.app-header') as HTMLElement | null;
     const headerHeight = header?.getBoundingClientRect().height || HEADER_FALLBACK_HEIGHT;
-    const ratioCap = Math.floor(viewportHeight * 0.75);
+    const ratioCap = Math.floor(viewportHeight * (this.isMobileViewport() ? 0.8 : 0.75));
     const spaceCap = Math.floor(viewportHeight - headerHeight - MIN_CANVAS_HEIGHT);
     return Math.max(88, Math.min(ratioCap, spaceCap));
   }
@@ -166,12 +199,17 @@ export class LayoutResizer {
     if (measured > 0) return Math.round(measured);
 
     if (panel.id === 'app-bottom-drawer') {
-      if (panel.classList.contains('minimized')) return 44;
+      if (panel.classList.contains('minimized')) return this.isMobileViewport() ? 60 : 44;
       if (panel.classList.contains('expanded')) return 440;
     }
 
     const varVal = parseFloat(panel.style.getPropertyValue(cssVar));
     if (Number.isFinite(varVal) && varVal > 0) return Math.round(varVal);
+
+    if (this.isMobileViewport() && isHorizontal) {
+      const vw = this.getWorkspaceWidth();
+      return Math.round(Math.min(vw * 0.92, Math.max(220, vw * 0.84)));
+    }
 
     return fallback;
   }
@@ -180,10 +218,24 @@ export class LayoutResizer {
     return Math.max(min, Math.min(Math.max(min, max), Math.round(size)));
   }
 
+  private setCssVar(config: ResizableSectionConfig, value: string | null): void {
+    if (value === null) {
+      config.panel.style.removeProperty(config.cssVar);
+      if (config.workspaceMirror) {
+        this.getWorkspaceEl()?.style.removeProperty(config.cssVar);
+      }
+    } else {
+      config.panel.style.setProperty(config.cssVar, value);
+      if (config.workspaceMirror) {
+        this.getWorkspaceEl()?.style.setProperty(config.cssVar, value);
+      }
+    }
+  }
+
   private applySize(config: ResizableSectionConfig, size: number, persist: boolean): number {
     const max = config.getMaxSize();
     const clamped = this.clampSize(size, config.minSize, max);
-    config.panel.style.setProperty(config.cssVar, `${clamped}px`);
+    this.setCssVar(config, `${clamped}px`);
     config.handle.setAttribute('aria-valuenow', String(clamped));
     config.handle.setAttribute('aria-valuemax', String(max));
     this.customSizes[config.id] = clamped;
@@ -195,7 +247,7 @@ export class LayoutResizer {
 
   private resetSize(config: ResizableSectionConfig): void {
     config.onBeforeResize?.();
-    config.panel.style.removeProperty(config.cssVar);
+    this.setCssVar(config, null);
     delete this.customSizes[config.id];
     config.handle.setAttribute('aria-valuenow', String(config.defaultSize));
     this.savePersistedSizes();
@@ -224,8 +276,10 @@ export class LayoutResizer {
 
       const startCoord = config.axis === 'horizontal' ? e.clientX : e.clientY;
       const startSize = this.measureSize(config.panel, config.cssVar, config.defaultSize);
+      const prevCustomSize = this.customSizes[config.id];
       const bodyClass = config.axis === 'horizontal' ? 'is-resizing-col' : 'is-resizing-row';
       let hasDragged = false;
+      let lastRawSize = startSize;
 
       config.handle.classList.add('active');
       config.panel.classList.add('is-resizing-panel');
@@ -248,7 +302,8 @@ export class LayoutResizer {
           hasDragged = true;
           config.onBeforeResize?.();
         }
-        this.applySize(config, startSize + delta, false);
+        lastRawSize = startSize + delta;
+        this.applySize(config, lastRawSize, false);
         this.callbacks.onLayoutChange();
       };
 
@@ -273,6 +328,15 @@ export class LayoutResizer {
         }
 
         if (hasDragged) {
+          if (config.onMinimize && lastRawSize < BOTTOM_MINIMIZE_THRESHOLD) {
+            if (typeof prevCustomSize === 'number') {
+              this.applySize(config, prevCustomSize, false);
+            } else {
+              this.setCssVar(config, null);
+              delete this.customSizes[config.id];
+            }
+            config.onMinimize();
+          }
           this.savePersistedSizes();
           this.callbacks.onLayoutChange();
         }
@@ -329,8 +393,8 @@ export class LayoutResizer {
       if (delta === 0) return;
 
       e.preventDefault();
-      config.onBeforeResize?.();
       const current = this.measureSize(config.panel, config.cssVar, config.defaultSize);
+      config.onBeforeResize?.();
       this.applySize(config, current + delta, true);
       this.callbacks.onLayoutChange();
     });
@@ -344,6 +408,18 @@ export class LayoutResizer {
   }
 
   public clampAll(): void {
+    const mobileNow = this.isMobileViewport();
+    if (mobileNow !== this.lastMobileMode) {
+      this.lastMobileMode = mobileNow;
+      for (const config of this.sections) {
+        this.setCssVar(config, null);
+      }
+      this.loadPersistedSizes();
+      this.applySavedSizes();
+      this.syncHandleVisibility();
+      return;
+    }
+
     for (const config of this.sections) {
       const saved = this.customSizes[config.id];
       if (typeof saved === 'number') {
@@ -363,8 +439,9 @@ export class LayoutResizer {
   }
 
   private loadPersistedSizes(): void {
+    this.customSizes = {};
     try {
-      const raw = window.localStorage?.getItem(STORAGE_KEY);
+      const raw = window.localStorage?.getItem(this.getStorageKey());
       if (!raw) return;
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       for (const key of ['left', 'right', 'bottom', 'drc'] as ResizableSectionId[]) {
@@ -381,10 +458,11 @@ export class LayoutResizer {
   private savePersistedSizes(): void {
     try {
       if (!window.localStorage) return;
+      const key = this.getStorageKey();
       if (Object.keys(this.customSizes).length === 0) {
-        window.localStorage.removeItem(STORAGE_KEY);
+        window.localStorage.removeItem(key);
       } else {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.customSizes));
+        window.localStorage.setItem(key, JSON.stringify(this.customSizes));
       }
     } catch {
       // Ignore storage write errors
