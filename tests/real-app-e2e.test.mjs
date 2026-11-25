@@ -226,3 +226,119 @@ test('Real App: Mobile viewport (390px) auto-collapses drawers and manages overl
   assert.ok(rightSidebar.classList.contains('collapsed'), 'Backdrop click closes right drawer');
   assert.ok(!backdrop.classList.contains('visible'), 'Backdrop hides when all drawers closed');
 });
+
+test('Real App: Sidebars, DRC panel, and bottom section are resizable and persist sizes', async () => {
+  const htmlPath = path.resolve(__dirname, '../apps/web/public/index.html');
+  const bundlePath = path.resolve(__dirname, '../apps/web/public/bundle.js');
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  const bundleJs = fs.readFileSync(bundlePath, 'utf8');
+
+  function createDom(storageData = {}) {
+    const dom = new JSDOM(html, {
+      url: 'http://localhost:4173/',
+      runScripts: 'dangerously'
+    });
+    const { window } = dom;
+    Object.defineProperty(window, 'innerWidth', { value: 1440, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 900, configurable: true });
+
+    const storeMap = new Map(Object.entries(storageData));
+    Object.defineProperty(window, 'localStorage', {
+      value: {
+        getItem: (k) => (storeMap.has(k) ? storeMap.get(k) : null),
+        setItem: (k, v) => { storeMap.set(k, String(v)); },
+        removeItem: (k) => { storeMap.delete(k); }
+      },
+      configurable: true
+    });
+
+    const dummyCtx = {
+      save: () => {}, restore: () => {}, clearRect: () => {}, beginPath: () => {},
+      closePath: () => {}, moveTo: () => {}, lineTo: () => {}, stroke: () => {},
+      fill: () => {}, arc: () => {}, roundRect: () => {}, fillRect: () => {},
+      strokeRect: () => {}, fillText: () => {}, measureText: () => ({ width: 60 }),
+      setLineDash: () => {}, scale: () => {}, translate: () => {},
+      canvas: { width: 1200, height: 800 }
+    };
+    window.HTMLCanvasElement.prototype.getContext = () => dummyCtx;
+    window.HTMLCanvasElement.prototype.getBoundingClientRect = () => ({
+      left: 0, top: 0, width: 1200, height: 800, right: 1200, bottom: 800
+    });
+    window.confirm = () => true;
+
+    window.eval(bundleJs);
+    window.dispatchEvent(new window.Event('DOMContentLoaded'));
+    return { window, storeMap };
+  }
+
+  function dragHandle(win, handle, startCoord, endCoord, axis) {
+    const downProp = axis === 'x' ? { clientX: startCoord, clientY: 100 } : { clientX: 100, clientY: startCoord };
+    const moveProp = axis === 'x' ? { clientX: endCoord, clientY: 100 } : { clientX: 100, clientY: endCoord };
+    handle.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, button: 0, ...downProp }));
+    win.dispatchEvent(new win.MouseEvent('mousemove', { bubbles: true, button: 0, ...moveProp }));
+    win.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, button: 0, ...moveProp }));
+  }
+
+  const { window, storeMap } = createDom();
+  const leftSidebar = window.document.querySelector('.sidebar-left');
+  const rightSidebar = window.document.querySelector('.sidebar-right');
+  const bottomDrawer = window.document.getElementById('app-bottom-drawer');
+  const drcPanel = window.document.querySelector('.drc-panel-container');
+
+  const leftHandle = window.document.getElementById('resizer-left-sidebar');
+  const rightHandle = window.document.getElementById('resizer-right-sidebar');
+  const bottomHandle = window.document.getElementById('resizer-bottom-drawer');
+  const drcHandle = window.document.getElementById('resizer-drc-panel');
+
+  // 1. Resize left sidebar wider (+62px from 278 -> 340) and verify clamping
+  dragHandle(window, leftHandle, 278, 340, 'x');
+  assert.equal(leftSidebar.style.getPropertyValue('--sidebar-left-width'), '340px');
+  dragHandle(window, leftHandle, 340, 20, 'x');
+  assert.equal(leftSidebar.style.getPropertyValue('--sidebar-left-width'), '200px', 'Left sidebar clamps to minWidth');
+
+  // 2. Resize right sidebar wider (dragging left -72px from 308 -> 380)
+  dragHandle(window, rightHandle, 1132, 1060, 'x');
+  assert.equal(rightSidebar.style.getPropertyValue('--sidebar-right-width'), '380px');
+
+  // 3. Resize bottom section taller (dragging up -96px from 244 -> 340)
+  dragHandle(window, bottomHandle, 656, 560, 'y');
+  assert.equal(bottomDrawer.style.getPropertyValue('--bottom-drawer-height'), '340px');
+
+  // 4. Dragging minimized bottom drawer restores it to normal resized height
+  window.document.getElementById('btn-toggle-drawer').click();
+  assert.ok(bottomDrawer.classList.contains('minimized'), 'Bottom drawer minimizes on toggle');
+  dragHandle(window, bottomHandle, 856, 700, 'y');
+  assert.ok(!bottomDrawer.classList.contains('minimized'), 'Dragging minimized bottom drawer restores it');
+  assert.equal(bottomDrawer.style.getPropertyValue('--bottom-drawer-height'), '200px');
+
+  // 5. Resize DRC panel via keyboard arrows
+  drcHandle.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+  assert.equal(drcPanel.style.getPropertyValue('--drc-panel-height'), '168px');
+
+  // 6. Collapsing sidebars hides their resizers; expanding reveals them
+  window.document.getElementById('btn-toggle-left-sidebar').click();
+  assert.ok(leftHandle.classList.contains('is-hidden'), 'Left resizer hides when sidebar collapses');
+  window.document.getElementById('btn-toggle-left-sidebar').click();
+  assert.ok(!leftHandle.classList.contains('is-hidden'), 'Left resizer shows when sidebar expands');
+
+  // 7. Persisted sizes restore on fresh app boot
+  const persistedRaw = storeMap.get('kona.layout.sizes.v1');
+  assert.ok(persistedRaw, 'Resized sizes should be persisted to localStorage');
+  const { window: window2 } = createDom({ 'kona.layout.sizes.v1': persistedRaw });
+  assert.equal(
+    window2.document.querySelector('.sidebar-left').style.getPropertyValue('--sidebar-left-width'),
+    '200px'
+  );
+  assert.equal(
+    window2.document.querySelector('.sidebar-right').style.getPropertyValue('--sidebar-right-width'),
+    '380px'
+  );
+  assert.equal(
+    window2.document.getElementById('app-bottom-drawer').style.getPropertyValue('--bottom-drawer-height'),
+    '200px'
+  );
+
+  // 8. Double-click resets section size to default CSS fallback
+  leftHandle.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+  assert.equal(leftSidebar.style.getPropertyValue('--sidebar-left-width'), '');
+});

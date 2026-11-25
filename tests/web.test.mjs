@@ -21,6 +21,15 @@ test('Web Assets: bundle.js and index.html are generated and complete', () => {
   assert.ok(html.includes('id="sv-code-output"'), 'index.html must have sv-code-output');
   assert.ok(html.includes('id="drc-status-chip"'), 'index.html must have drc-status-chip');
   assert.ok(html.includes('id="catalog-items-list"'), 'index.html must have catalog-items-list');
+  assert.ok(html.includes('id="resizer-left-sidebar"'), 'index.html must have left sidebar resizer');
+  assert.ok(html.includes('id="resizer-right-sidebar"'), 'index.html must have right sidebar resizer');
+  assert.ok(html.includes('id="resizer-bottom-drawer"'), 'index.html must have bottom drawer resizer');
+  assert.ok(html.includes('id="resizer-drc-panel"'), 'index.html must have DRC panel resizer');
+
+  const css = fs.readFileSync(cssPath, 'utf8');
+  assert.ok(css.includes('--sidebar-left-width'), 'styles.css must support resizable left sidebar');
+  assert.ok(css.includes('--sidebar-right-width'), 'styles.css must support resizable right sidebar');
+  assert.ok(css.includes('--bottom-drawer-height'), 'styles.css must support resizable bottom drawer');
 
   const bundle = fs.readFileSync(bundlePath, 'utf8');
   assert.ok(bundle.includes('SchematicCanvas'), 'bundle.js must contain SchematicCanvas');

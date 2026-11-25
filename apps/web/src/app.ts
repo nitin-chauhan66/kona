@@ -27,6 +27,7 @@ import { DrcPanel } from './components/DrcPanel.js';
 import { InspectorPanel } from './components/InspectorPanel.js';
 import { RtlPreviewPanel } from './components/RtlPreviewPanel.js';
 import { WaveformViewer } from './components/WaveformViewer.js';
+import { LayoutResizer } from './components/LayoutResizer.js';
 import { showToast } from './components/ToastService.js';
 
 export class KonaApp {
@@ -36,6 +37,8 @@ export class KonaApp {
   private readonly drcPanel: DrcPanel;
   private readonly inspectorPanel: InspectorPanel;
   private readonly rtlPreviewPanel: RtlPreviewPanel;
+  private readonly layoutResizer: LayoutResizer;
+  private drawerState: 'normal' | 'minimized' | 'expanded' = 'normal';
 
   constructor() {
     const initialHash = typeof window !== 'undefined' ? window.location.hash : '';
@@ -71,6 +74,7 @@ export class KonaApp {
         document.querySelector('.sidebar-right')?.classList.remove('collapsed');
         document.getElementById('btn-toggle-right-sidebar')?.classList.add('active');
         this.syncMobileBackdrop();
+        this.layoutResizer.syncHandleVisibility();
         this.canvas.resize();
       }
     });
@@ -116,6 +120,18 @@ export class KonaApp {
     this.setupSidebarToggles();
     this.setupBottomDrawerTabs();
     this.setupSimulationControls();
+
+    this.layoutResizer = new LayoutResizer({
+      onLayoutChange: () => {
+        this.canvas.resize();
+        this.waveformViewer.resize();
+      },
+      onBottomDrawerRestore: () => {
+        this.drawerState = 'normal';
+        this.syncBottomDrawerToggleIcon();
+      }
+    });
+    this.layoutResizer.syncHandleVisibility();
 
     this.canvas.fitToScreen();
     if (typeof requestAnimationFrame === 'function') {
@@ -323,6 +339,7 @@ export class KonaApp {
     document.getElementById('btn-toggle-left-sidebar')?.classList.remove('active');
     document.getElementById('btn-toggle-right-sidebar')?.classList.remove('active');
     this.syncMobileBackdrop();
+    this.layoutResizer?.syncHandleVisibility();
   }
 
   private setupSidebarToggles(): void {
@@ -346,6 +363,7 @@ export class KonaApp {
       leftSidebar?.classList.toggle('collapsed');
       leftBtn.classList.toggle('active', !leftSidebar?.classList.contains('collapsed'));
       this.syncMobileBackdrop();
+      this.layoutResizer?.syncHandleVisibility();
       setTimeout(() => this.canvas.resize(), 220);
     });
 
@@ -358,6 +376,7 @@ export class KonaApp {
       rightSidebar?.classList.toggle('collapsed');
       rightBtn.classList.toggle('active', !rightSidebar?.classList.contains('collapsed'));
       this.syncMobileBackdrop();
+      this.layoutResizer?.syncHandleVisibility();
       setTimeout(() => this.canvas.resize(), 220);
     });
 
@@ -370,8 +389,20 @@ export class KonaApp {
 
     window.addEventListener('resize', () => {
       this.syncMobileBackdrop();
+      this.layoutResizer?.clampAll();
       this.canvas.resize();
+      this.waveformViewer.resize();
     });
+  }
+
+  private syncBottomDrawerToggleIcon(): void {
+    const toggleDrawerBtn = document.getElementById('btn-toggle-drawer');
+    if (!toggleDrawerBtn) return;
+    if (this.drawerState === 'minimized') {
+      toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
+    } else {
+      toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+    }
   }
 
   private setupHeaderActions(): void {
@@ -396,34 +427,29 @@ export class KonaApp {
 
     const drawerEl = document.getElementById('app-bottom-drawer');
     const toggleDrawerBtn = document.getElementById('btn-toggle-drawer');
-    let drawerState: 'normal' | 'minimized' | 'expanded' = 'normal';
 
     if (typeof window !== 'undefined' && window.innerWidth <= 680) {
       drawerEl?.classList.add('minimized');
-      drawerState = 'minimized';
-      if (toggleDrawerBtn) {
-        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
-      }
+      this.drawerState = 'minimized';
+      this.syncBottomDrawerToggleIcon();
     }
 
     toggleDrawerBtn?.addEventListener('click', () => {
       if (!drawerEl?.classList.contains('minimized') && !drawerEl?.classList.contains('expanded')) {
-        drawerState = 'normal';
+        this.drawerState = 'normal';
       }
-      if (drawerState === 'normal') {
+      if (this.drawerState === 'normal') {
         drawerEl?.classList.add('minimized');
-        drawerState = 'minimized';
-        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
-      } else if (drawerState === 'minimized') {
+        this.drawerState = 'minimized';
+      } else if (this.drawerState === 'minimized') {
         drawerEl?.classList.remove('minimized');
         drawerEl?.classList.add('expanded');
-        drawerState = 'expanded';
-        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+        this.drawerState = 'expanded';
       } else {
         drawerEl?.classList.remove('expanded');
-        drawerState = 'normal';
-        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+        this.drawerState = 'normal';
       }
+      this.syncBottomDrawerToggleIcon();
       setTimeout(() => {
         this.canvas.resize();
         this.waveformViewer.resize();
@@ -469,6 +495,8 @@ export class KonaApp {
 
         if (drawerEl?.classList.contains('minimized')) {
           drawerEl.classList.remove('minimized');
+          this.drawerState = 'normal';
+          this.syncBottomDrawerToggleIcon();
         }
 
         const target = tab.getAttribute('data-target');

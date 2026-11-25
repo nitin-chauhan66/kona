@@ -110,6 +110,7 @@
 
       <div id="catalog-items-list" class="catalog-list md-card-container"></div>
     </aside>
+    <div id="resizer-left-sidebar" class="layout-resizer layout-resizer-vertical resizer-left" role="separator" aria-orientation="vertical" aria-label="Resize IP Library sidebar" aria-valuemin="200" aria-valuemax="520" aria-valuenow="278" tabindex="0" title="Drag to resize IP Library (double-click to reset)"></div>
 
     <!-- Center: Schematic Canvas Viewport -->
     <section class="canvas-viewport">
@@ -166,6 +167,7 @@
     </section>
 
     <!-- Right Sidebar: Parameter Inspector & DRC -->
+    <div id="resizer-right-sidebar" class="layout-resizer layout-resizer-vertical resizer-right" role="separator" aria-orientation="vertical" aria-label="Resize Inspector sidebar" aria-valuemin="220" aria-valuemax="560" aria-valuenow="308" tabindex="0" title="Drag to resize Inspector (double-click to reset)"></div>
     <aside class="sidebar-right md-nav-drawer-right">
       <div class="sidebar-tabs md-tab-row">
         <div class="tab-btn active md-tab">
@@ -179,6 +181,7 @@
 
       <!-- Collapsible DRC diagnostics pane at bottom of right sidebar -->
       <div class="drc-panel-container md-surface-container">
+        <div id="resizer-drc-panel" class="layout-resizer layout-resizer-horizontal resizer-drc" role="separator" aria-orientation="horizontal" aria-label="Resize DRC Diagnostics panel" aria-valuemin="80" aria-valuemax="420" aria-valuenow="152" tabindex="0" title="Drag to resize DRC Diagnostics (double-click to reset)"></div>
         <div class="drc-panel-header" id="drc-panel-toggle" role="button" tabindex="0" title="Click to expand/collapse DRC">
           <div class="drc-header-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -193,6 +196,7 @@
 
   <!-- Bottom Drawer: Split-Screen RTL Preview & Waveform Viewer -->
   <footer class="app-bottom-drawer md-bottom-sheet" id="app-bottom-drawer">
+    <div id="resizer-bottom-drawer" class="layout-resizer layout-resizer-horizontal resizer-bottom" role="separator" aria-orientation="horizontal" aria-label="Resize bottom RTL and Waveform panel" aria-valuemin="88" aria-valuemax="600" aria-valuenow="244" tabindex="0" title="Drag to resize bottom panel (double-click to reset)"></div>
     <div class="drawer-header">
       <div class="drawer-tabs md-tabs">
         <button class="drawer-tab active md-tab" data-target="rtl">
