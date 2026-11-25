@@ -170,3 +170,59 @@ test('Real App: DOM Initialization and Lifecycle in Browser Environment', async 
   exportJsonBtn.click();
   assert.ok(downloadedName.endsWith('.kona.json'), 'Export .kona.json should trigger download with .kona.json extension');
 });
+
+test('Real App: Mobile viewport (390px) auto-collapses drawers and manages overlay scrim', async () => {
+  const htmlPath = path.resolve(__dirname, '../apps/web/public/index.html');
+  const bundlePath = path.resolve(__dirname, '../apps/web/public/bundle.js');
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  const bundleJs = fs.readFileSync(bundlePath, 'utf8');
+
+  const dom = new JSDOM(html, {
+    url: 'http://localhost:4173/',
+    runScripts: 'dangerously'
+  });
+
+  const { window } = dom;
+  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
+  Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true });
+
+  const dummyCtx = {
+    save: () => {}, restore: () => {}, clearRect: () => {}, beginPath: () => {},
+    closePath: () => {}, moveTo: () => {}, lineTo: () => {}, stroke: () => {},
+    fill: () => {}, arc: () => {}, roundRect: () => {}, fillRect: () => {},
+    strokeRect: () => {}, fillText: () => {}, measureText: () => ({ width: 60 }),
+    setLineDash: () => {}, scale: () => {}, translate: () => {},
+    canvas: { width: 390, height: 600 }
+  };
+  window.HTMLCanvasElement.prototype.getContext = () => dummyCtx;
+  window.HTMLCanvasElement.prototype.getBoundingClientRect = () => ({
+    left: 0, top: 0, width: 390, height: 600, right: 390, bottom: 600
+  });
+  window.confirm = () => true;
+
+  window.eval(bundleJs);
+  window.dispatchEvent(new window.Event('DOMContentLoaded'));
+
+  const leftSidebar = window.document.querySelector('.sidebar-left');
+  const rightSidebar = window.document.querySelector('.sidebar-right');
+  const bottomDrawer = window.document.getElementById('app-bottom-drawer');
+  const backdrop = window.document.getElementById('mobile-drawer-backdrop');
+
+  assert.ok(leftSidebar.classList.contains('collapsed'), 'Left sidebar must start collapsed on mobile');
+  assert.ok(rightSidebar.classList.contains('collapsed'), 'Right sidebar must start collapsed on mobile');
+  assert.ok(bottomDrawer.classList.contains('minimized'), 'Bottom drawer must start minimized on phone viewport');
+
+  // Opening left drawer should show scrim; opening right drawer should close left drawer
+  window.document.getElementById('btn-toggle-left-sidebar').click();
+  assert.ok(!leftSidebar.classList.contains('collapsed'), 'Left drawer opens on toggle');
+  assert.ok(backdrop.classList.contains('visible'), 'Mobile backdrop becomes visible');
+
+  window.document.getElementById('btn-toggle-right-sidebar').click();
+  assert.ok(leftSidebar.classList.contains('collapsed'), 'Left drawer closes when right drawer opens');
+  assert.ok(!rightSidebar.classList.contains('collapsed'), 'Right drawer opens on toggle');
+
+  // Clicking backdrop closes open drawers
+  backdrop.click();
+  assert.ok(rightSidebar.classList.contains('collapsed'), 'Backdrop click closes right drawer');
+  assert.ok(!backdrop.classList.contains('visible'), 'Backdrop hides when all drawers closed');
+});

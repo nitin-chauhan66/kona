@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Kona — Visual Chip Design & Verification Platform</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -75,6 +75,7 @@
 
   <!-- Main Studio Workspace -->
   <main class="app-workspace">
+    <div id="mobile-drawer-backdrop" class="mobile-drawer-backdrop" aria-hidden="true"></div>
     <!-- Left Navigation Drawer: Starter IP Catalog -->
     <aside class="sidebar-left md-nav-drawer">
       <div class="sidebar-header">
@@ -83,7 +84,10 @@
             <svg class="sidebar-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             <h2>Starter IP Library</h2>
           </div>
-          <span class="badge-count md-badge-tonal" id="catalog-count-badge">13 IPs</span>
+          <div class="sidebar-header-right">
+            <span class="badge-count md-badge-tonal" id="catalog-count-badge">13 IPs</span>
+            <button id="btn-close-left-sidebar" class="mobile-drawer-close" aria-label="Close IP Library">&times;</button>
+          </div>
         </div>
         <p class="subtext">Click or drag any block onto the canvas</p>
 
@@ -169,6 +173,7 @@
           <span>Inspector</span>
           <div class="md-tab-indicator"></div>
         </div>
+        <button id="btn-close-right-sidebar" class="mobile-drawer-close" aria-label="Close Inspector">&times;</button>
       </div>
       <div id="inspector-content" class="inspector-body"></div>
 

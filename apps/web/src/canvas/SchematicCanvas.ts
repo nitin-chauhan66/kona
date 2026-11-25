@@ -430,19 +430,22 @@ export class SchematicCanvas {
 
   private setupEvents(): void {
     let hasMoved = false;
+    let pinchStartDist = 0;
+    let pinchStartScale = 1;
+    let pinchLastMid: Point | null = null;
 
-    this.canvas.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      this.zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
-    }, { passive: false });
-
-    this.canvas.addEventListener('mousedown', (e) => {
-      const world = this.screenToWorld(e.offsetX, e.offsetY);
+    const beginPrimaryPointer = (clientX: number, clientY: number, isTouch: boolean, forcePan = false) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const sx = clientX - rect.left;
+      const sy = clientY - rect.top;
+      this.mouseScreen = { x: sx, y: sy };
+      const world = this.screenToWorld(sx, sy);
       hasMoved = false;
 
-      if (!this.spacePressed && this.toolMode !== 'pan' && e.button === 0) {
+      if (!forcePan && !this.spacePressed && this.toolMode !== 'pan') {
         const allPorts = computeAllPortPositions(this.design);
-        const hitRadius = Math.max(10, 11 / this.transform.scale);
+        const baseHit = isTouch ? 20 : 11;
+        const hitRadius = Math.max(baseHit, (baseHit + 2) / this.transform.scale);
         const clickedPort = allPorts.find(p => Math.hypot(p.x - world.x, p.y - world.y) <= hitRadius);
 
         if (clickedPort) {
@@ -454,9 +457,9 @@ export class SchematicCanvas {
         }
       }
 
-      if (e.button === 1 || e.altKey || this.spacePressed || this.toolMode === 'pan') {
+      if (forcePan || this.spacePressed || this.toolMode === 'pan') {
         this.isPanning = true;
-        this.panStart = { x: e.clientX - this.transform.x, y: e.clientY - this.transform.y };
+        this.panStart = { x: clientX - this.transform.x, y: clientY - this.transform.y };
         this.updateCursor();
         return;
       }
@@ -482,7 +485,11 @@ export class SchematicCanvas {
         return;
       }
 
-      const hitWire = findHitWire(this.renderedWires, world, this.transform.scale);
+      const hitWire = findHitWire(
+        this.renderedWires,
+        world,
+        isTouch ? Math.min(this.transform.scale, 0.7) : this.transform.scale
+      );
       if (hitWire) {
         this.selectedNetId = hitWire.net.id;
         this.selectedInstanceId = null;
@@ -494,22 +501,22 @@ export class SchematicCanvas {
       this.selectedInstanceId = null;
       this.selectedNetId = null;
       this.isPanning = true;
-      this.panStart = { x: e.clientX - this.transform.x, y: e.clientY - this.transform.y };
+      this.panStart = { x: clientX - this.transform.x, y: clientY - this.transform.y };
       this.updateCursor();
       this.notifySelection();
       this.render();
-    });
+    };
 
-    window.addEventListener('mousemove', (e) => {
+    const movePrimaryPointer = (clientX: number, clientY: number, isTouch: boolean) => {
       const rect = this.canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
+      const mouseX = clientX - rect.left;
+      const mouseY = clientY - rect.top;
       this.mouseScreen = { x: mouseX, y: mouseY };
       const world = this.screenToWorld(mouseX, mouseY);
 
       if (this.isPanning) {
-        this.transform.x = e.clientX - this.panStart.x;
-        this.transform.y = e.clientY - this.panStart.y;
+        this.transform.x = clientX - this.panStart.x;
+        this.transform.y = clientY - this.panStart.y;
         this.render();
         return;
       }
@@ -517,7 +524,8 @@ export class SchematicCanvas {
       if (this.wiringSource) {
         this.wiringCurrent = { x: world.x, y: world.y };
         const allPorts = computeAllPortPositions(this.design);
-        const snapRadius = Math.max(13, 14 / this.transform.scale);
+        const snapBase = isTouch ? 22 : 13;
+        const snapRadius = Math.max(snapBase, (snapBase + 2) / this.transform.scale);
         this.hoveredPort = allPorts.find(p => {
           if (p.instanceId === this.wiringSource!.instanceId) return false;
           return Math.hypot(p.x - world.x, p.y - world.y) <= snapRadius;
@@ -542,6 +550,8 @@ export class SchematicCanvas {
         }
         return;
       }
+
+      if (isTouch) return;
 
       const insideCanvas = mouseX >= 0 && mouseY >= 0 && mouseX <= rect.width && mouseY <= rect.height;
       if (!insideCanvas) {
@@ -594,9 +604,9 @@ export class SchematicCanvas {
         this.updateCursor();
         this.render();
       }
-    });
+    };
 
-    window.addEventListener('mouseup', () => {
+    const endPrimaryPointer = () => {
       if (this.isPanning) {
         this.isPanning = false;
         this.updateCursor();
@@ -616,6 +626,87 @@ export class SchematicCanvas {
         this.updateCursor();
         this.render();
       }
+    };
+
+    this.canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+    }, { passive: false });
+
+    this.canvas.addEventListener('mousedown', (e) => {
+      const forcePan = e.button === 1 || e.altKey;
+      beginPrimaryPointer(e.clientX, e.clientY, false, forcePan);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      movePrimaryPointer(e.clientX, e.clientY, false);
+    });
+
+    window.addEventListener('mouseup', () => {
+      endPrimaryPointer();
+    });
+
+    // Touch & two-finger pinch-zoom support for mobile/tablets
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        e.preventDefault();
+        pinchLastMid = null;
+        const t = e.touches[0];
+        beginPrimaryPointer(t.clientX, t.clientY, true, false);
+      } else if (e.touches.length === 2) {
+        e.preventDefault();
+        // Cancel any single-finger drag before switching to pinch-zoom
+        this.draggingInstanceId = null;
+        this.wiringSource = null;
+        this.isPanning = false;
+        const [a, b] = [e.touches[0], e.touches[1]];
+        pinchStartDist = Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+        pinchStartScale = this.transform.scale;
+        const rect = this.canvas.getBoundingClientRect();
+        pinchLastMid = {
+          x: (a.clientX + b.clientX) / 2 - rect.left,
+          y: (a.clientY + b.clientY) / 2 - rect.top
+        };
+      }
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && !pinchLastMid) {
+        e.preventDefault();
+        const t = e.touches[0];
+        movePrimaryPointer(t.clientX, t.clientY, true);
+      } else if (e.touches.length === 2 && pinchStartDist > 0) {
+        e.preventDefault();
+        const [a, b] = [e.touches[0], e.touches[1]];
+        const rect = this.canvas.getBoundingClientRect();
+        const mid = {
+          x: (a.clientX + b.clientX) / 2 - rect.left,
+          y: (a.clientY + b.clientY) / 2 - rect.top
+        };
+        const dist = Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+        const targetScale = Math.max(0.2, Math.min(2.8, pinchStartScale * (dist / pinchStartDist)));
+
+        if (pinchLastMid) {
+          this.transform.x += mid.x - pinchLastMid.x;
+          this.transform.y += mid.y - pinchLastMid.y;
+        }
+        this.zoomAt(mid.x, mid.y, targetScale / this.transform.scale);
+        pinchLastMid = mid;
+      }
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchend', (e) => {
+      if (e.touches.length === 0) {
+        pinchLastMid = null;
+        pinchStartDist = 0;
+        endPrimaryPointer();
+      }
+    });
+
+    this.canvas.addEventListener('touchcancel', () => {
+      pinchLastMid = null;
+      pinchStartDist = 0;
+      endPrimaryPointer();
     });
 
     window.addEventListener('keydown', (e) => {

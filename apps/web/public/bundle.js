@@ -3279,16 +3279,20 @@ var SchematicCanvas = class {
   }
   setupEvents() {
     let hasMoved = false;
-    this.canvas.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      this.zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
-    }, { passive: false });
-    this.canvas.addEventListener("mousedown", (e) => {
-      const world = this.screenToWorld(e.offsetX, e.offsetY);
+    let pinchStartDist = 0;
+    let pinchStartScale = 1;
+    let pinchLastMid = null;
+    const beginPrimaryPointer = (clientX, clientY, isTouch, forcePan = false) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const sx = clientX - rect.left;
+      const sy = clientY - rect.top;
+      this.mouseScreen = { x: sx, y: sy };
+      const world = this.screenToWorld(sx, sy);
       hasMoved = false;
-      if (!this.spacePressed && this.toolMode !== "pan" && e.button === 0) {
+      if (!forcePan && !this.spacePressed && this.toolMode !== "pan") {
         const allPorts = computeAllPortPositions(this.design);
-        const hitRadius = Math.max(10, 11 / this.transform.scale);
+        const baseHit = isTouch ? 20 : 11;
+        const hitRadius = Math.max(baseHit, (baseHit + 2) / this.transform.scale);
         const clickedPort = allPorts.find((p) => Math.hypot(p.x - world.x, p.y - world.y) <= hitRadius);
         if (clickedPort) {
           this.wiringSource = clickedPort;
@@ -3298,9 +3302,9 @@ var SchematicCanvas = class {
           return;
         }
       }
-      if (e.button === 1 || e.altKey || this.spacePressed || this.toolMode === "pan") {
+      if (forcePan || this.spacePressed || this.toolMode === "pan") {
         this.isPanning = true;
-        this.panStart = { x: e.clientX - this.transform.x, y: e.clientY - this.transform.y };
+        this.panStart = { x: clientX - this.transform.x, y: clientY - this.transform.y };
         this.updateCursor();
         return;
       }
@@ -3318,7 +3322,11 @@ var SchematicCanvas = class {
         this.render();
         return;
       }
-      const hitWire = findHitWire(this.renderedWires, world, this.transform.scale);
+      const hitWire = findHitWire(
+        this.renderedWires,
+        world,
+        isTouch ? Math.min(this.transform.scale, 0.7) : this.transform.scale
+      );
       if (hitWire) {
         this.selectedNetId = hitWire.net.id;
         this.selectedInstanceId = null;
@@ -3329,27 +3337,28 @@ var SchematicCanvas = class {
       this.selectedInstanceId = null;
       this.selectedNetId = null;
       this.isPanning = true;
-      this.panStart = { x: e.clientX - this.transform.x, y: e.clientY - this.transform.y };
+      this.panStart = { x: clientX - this.transform.x, y: clientY - this.transform.y };
       this.updateCursor();
       this.notifySelection();
       this.render();
-    });
-    window.addEventListener("mousemove", (e) => {
+    };
+    const movePrimaryPointer = (clientX, clientY, isTouch) => {
       const rect = this.canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
+      const mouseX = clientX - rect.left;
+      const mouseY = clientY - rect.top;
       this.mouseScreen = { x: mouseX, y: mouseY };
       const world = this.screenToWorld(mouseX, mouseY);
       if (this.isPanning) {
-        this.transform.x = e.clientX - this.panStart.x;
-        this.transform.y = e.clientY - this.panStart.y;
+        this.transform.x = clientX - this.panStart.x;
+        this.transform.y = clientY - this.panStart.y;
         this.render();
         return;
       }
       if (this.wiringSource) {
         this.wiringCurrent = { x: world.x, y: world.y };
         const allPorts2 = computeAllPortPositions(this.design);
-        const snapRadius = Math.max(13, 14 / this.transform.scale);
+        const snapBase = isTouch ? 22 : 13;
+        const snapRadius = Math.max(snapBase, (snapBase + 2) / this.transform.scale);
         this.hoveredPort = allPorts2.find((p) => {
           if (p.instanceId === this.wiringSource.instanceId) return false;
           return Math.hypot(p.x - world.x, p.y - world.y) <= snapRadius;
@@ -3369,6 +3378,7 @@ var SchematicCanvas = class {
         }
         return;
       }
+      if (isTouch) return;
       const insideCanvas = mouseX >= 0 && mouseY >= 0 && mouseX <= rect.width && mouseY <= rect.height;
       if (!insideCanvas) {
         if (this.hoveredPort || this.hoveredNetId || this.hoveredInstanceId) {
@@ -3406,8 +3416,8 @@ var SchematicCanvas = class {
         this.updateCursor();
         this.render();
       }
-    });
-    window.addEventListener("mouseup", () => {
+    };
+    const endPrimaryPointer = () => {
       if (this.isPanning) {
         this.isPanning = false;
         this.updateCursor();
@@ -3425,6 +3435,76 @@ var SchematicCanvas = class {
         this.updateCursor();
         this.render();
       }
+    };
+    this.canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      this.zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+    }, { passive: false });
+    this.canvas.addEventListener("mousedown", (e) => {
+      const forcePan = e.button === 1 || e.altKey;
+      beginPrimaryPointer(e.clientX, e.clientY, false, forcePan);
+    });
+    window.addEventListener("mousemove", (e) => {
+      movePrimaryPointer(e.clientX, e.clientY, false);
+    });
+    window.addEventListener("mouseup", () => {
+      endPrimaryPointer();
+    });
+    this.canvas.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 1) {
+        e.preventDefault();
+        pinchLastMid = null;
+        const t = e.touches[0];
+        beginPrimaryPointer(t.clientX, t.clientY, true, false);
+      } else if (e.touches.length === 2) {
+        e.preventDefault();
+        this.draggingInstanceId = null;
+        this.wiringSource = null;
+        this.isPanning = false;
+        const [a, b] = [e.touches[0], e.touches[1]];
+        pinchStartDist = Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+        pinchStartScale = this.transform.scale;
+        const rect = this.canvas.getBoundingClientRect();
+        pinchLastMid = {
+          x: (a.clientX + b.clientX) / 2 - rect.left,
+          y: (a.clientY + b.clientY) / 2 - rect.top
+        };
+      }
+    }, { passive: false });
+    this.canvas.addEventListener("touchmove", (e) => {
+      if (e.touches.length === 1 && !pinchLastMid) {
+        e.preventDefault();
+        const t = e.touches[0];
+        movePrimaryPointer(t.clientX, t.clientY, true);
+      } else if (e.touches.length === 2 && pinchStartDist > 0) {
+        e.preventDefault();
+        const [a, b] = [e.touches[0], e.touches[1]];
+        const rect = this.canvas.getBoundingClientRect();
+        const mid = {
+          x: (a.clientX + b.clientX) / 2 - rect.left,
+          y: (a.clientY + b.clientY) / 2 - rect.top
+        };
+        const dist = Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+        const targetScale = Math.max(0.2, Math.min(2.8, pinchStartScale * (dist / pinchStartDist)));
+        if (pinchLastMid) {
+          this.transform.x += mid.x - pinchLastMid.x;
+          this.transform.y += mid.y - pinchLastMid.y;
+        }
+        this.zoomAt(mid.x, mid.y, targetScale / this.transform.scale);
+        pinchLastMid = mid;
+      }
+    }, { passive: false });
+    this.canvas.addEventListener("touchend", (e) => {
+      if (e.touches.length === 0) {
+        pinchLastMid = null;
+        pinchStartDist = 0;
+        endPrimaryPointer();
+      }
+    });
+    this.canvas.addEventListener("touchcancel", () => {
+      pinchLastMid = null;
+      pinchStartDist = 0;
+      endPrimaryPointer();
     });
     window.addEventListener("keydown", (e) => {
       const activeTag = document.activeElement?.tagName;
@@ -4407,6 +4487,20 @@ var WaveformViewer = class {
     window.addEventListener("mouseup", () => {
       this.isScrubbing = false;
     });
+    this.canvas.addEventListener("touchstart", (e) => {
+      if (!this.trace || e.touches.length !== 1) return;
+      e.preventDefault();
+      this.isScrubbing = true;
+      this.updateCursorFromClientX(e.touches[0].clientX);
+    }, { passive: false });
+    this.canvas.addEventListener("touchmove", (e) => {
+      if (!this.isScrubbing || !this.trace || e.touches.length !== 1) return;
+      e.preventDefault();
+      this.updateCursorFromClientX(e.touches[0].clientX);
+    }, { passive: false });
+    this.canvas.addEventListener("touchend", () => {
+      this.isScrubbing = false;
+    });
     this.canvas.addEventListener("wheel", (e) => {
       if (!this.trace) return;
       e.preventDefault();
@@ -4644,7 +4738,13 @@ var KonaApp = class {
       onFocusInstance: (id) => this.canvas.focusInstance(id),
       onFocusNet: (id) => this.canvas.focusNet(id),
       onEnsureVisible: () => {
+        if (this.isMobileLayout()) {
+          document.querySelector(".sidebar-left")?.classList.add("collapsed");
+          document.getElementById("btn-toggle-left-sidebar")?.classList.remove("active");
+        }
         document.querySelector(".sidebar-right")?.classList.remove("collapsed");
+        document.getElementById("btn-toggle-right-sidebar")?.classList.add("active");
+        this.syncMobileBackdrop();
         this.canvas.resize();
       }
     });
@@ -4653,17 +4753,27 @@ var KonaApp = class {
         this.canvas.render();
         this.store.commitMutation();
       },
-      onFocusInstance: (id) => this.canvas.focusInstance(id),
-      onFocusNet: (id) => this.canvas.focusNet(id),
+      onFocusInstance: (id) => {
+        if (this.isMobileLayout()) this.closeMobileSidebars();
+        this.canvas.focusInstance(id);
+      },
+      onFocusNet: (id) => {
+        if (this.isMobileLayout()) this.closeMobileSidebars();
+        this.canvas.focusNet(id);
+      },
       onDuplicateSelected: () => {
         const dup = this.canvas.duplicateSelected();
         if (dup) showToast(`Duplicated ${dup.name}`, "info");
       },
-      onDeleteSelected: () => this.canvas.deleteSelected()
+      onDeleteSelected: () => {
+        this.canvas.deleteSelected();
+        if (this.isMobileLayout()) this.closeMobileSidebars();
+      }
     });
     new CatalogPanel({
       onAddModule: (moduleId) => {
         this.canvas.addModule(moduleId);
+        if (this.isMobileLayout()) this.closeMobileSidebars();
         showToast(`Added ${moduleId} to canvas`, "success");
       }
     });
@@ -4726,6 +4836,10 @@ var KonaApp = class {
     const redoBtn = document.getElementById("btn-redo");
     if (undoBtn) undoBtn.disabled = !state.canUndo;
     if (redoBtn) redoBtn.disabled = !state.canRedo;
+    const rightBtn = document.getElementById("btn-toggle-right-sidebar");
+    if (rightBtn) {
+      rightBtn.classList.toggle("has-selection", Boolean(state.selectedInstance || state.selectedNet));
+    }
   }
   setupCanvasDragDrop() {
     const viewport = document.querySelector(".canvas-viewport");
@@ -4828,20 +4942,60 @@ var KonaApp = class {
       }
     });
   }
+  isMobileLayout() {
+    return typeof window !== "undefined" && window.innerWidth <= 900;
+  }
+  syncMobileBackdrop() {
+    const backdrop = document.getElementById("mobile-drawer-backdrop");
+    if (!backdrop) return;
+    const leftOpen = !document.querySelector(".sidebar-left")?.classList.contains("collapsed");
+    const rightOpen = !document.querySelector(".sidebar-right")?.classList.contains("collapsed");
+    backdrop.classList.toggle("visible", this.isMobileLayout() && (leftOpen || rightOpen));
+  }
+  closeMobileSidebars() {
+    document.querySelector(".sidebar-left")?.classList.add("collapsed");
+    document.querySelector(".sidebar-right")?.classList.add("collapsed");
+    document.getElementById("btn-toggle-left-sidebar")?.classList.remove("active");
+    document.getElementById("btn-toggle-right-sidebar")?.classList.remove("active");
+    this.syncMobileBackdrop();
+  }
   setupSidebarToggles() {
     const leftSidebar = document.querySelector(".sidebar-left");
     const rightSidebar = document.querySelector(".sidebar-right");
     const leftBtn = document.getElementById("btn-toggle-left-sidebar");
     const rightBtn = document.getElementById("btn-toggle-right-sidebar");
+    const backdrop = document.getElementById("mobile-drawer-backdrop");
+    if (this.isMobileLayout()) {
+      this.closeMobileSidebars();
+    }
     leftBtn?.addEventListener("click", () => {
+      const opening = leftSidebar?.classList.contains("collapsed");
+      if (this.isMobileLayout() && opening) {
+        rightSidebar?.classList.add("collapsed");
+        rightBtn?.classList.remove("active");
+      }
       leftSidebar?.classList.toggle("collapsed");
       leftBtn.classList.toggle("active", !leftSidebar?.classList.contains("collapsed"));
+      this.syncMobileBackdrop();
       setTimeout(() => this.canvas.resize(), 220);
     });
     rightBtn?.addEventListener("click", () => {
+      const opening = rightSidebar?.classList.contains("collapsed");
+      if (this.isMobileLayout() && opening) {
+        leftSidebar?.classList.add("collapsed");
+        leftBtn?.classList.remove("active");
+      }
       rightSidebar?.classList.toggle("collapsed");
       rightBtn.classList.toggle("active", !rightSidebar?.classList.contains("collapsed"));
+      this.syncMobileBackdrop();
       setTimeout(() => this.canvas.resize(), 220);
+    });
+    backdrop?.addEventListener("click", () => this.closeMobileSidebars());
+    document.getElementById("btn-close-left-sidebar")?.addEventListener("click", () => this.closeMobileSidebars());
+    document.getElementById("btn-close-right-sidebar")?.addEventListener("click", () => this.closeMobileSidebars());
+    window.addEventListener("resize", () => {
+      this.syncMobileBackdrop();
+      this.canvas.resize();
     });
   }
   setupHeaderActions() {
@@ -4871,7 +5025,17 @@ var KonaApp = class {
     const drawerEl = document.getElementById("app-bottom-drawer");
     const toggleDrawerBtn = document.getElementById("btn-toggle-drawer");
     let drawerState = "normal";
+    if (typeof window !== "undefined" && window.innerWidth <= 680) {
+      drawerEl?.classList.add("minimized");
+      drawerState = "minimized";
+      if (toggleDrawerBtn) {
+        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
+      }
+    }
     toggleDrawerBtn?.addEventListener("click", () => {
+      if (!drawerEl?.classList.contains("minimized") && !drawerEl?.classList.contains("expanded")) {
+        drawerState = "normal";
+      }
       if (drawerState === "normal") {
         drawerEl?.classList.add("minimized");
         drawerState = "minimized";

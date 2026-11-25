@@ -79,6 +79,7 @@ body.md3-theme {
   background-color: var(--md-sys-color-surface-container-lowest);
   color: var(--md-sys-color-on-surface);
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -683,6 +684,7 @@ body.md3-theme {
   width: 100%;
   height: 100%;
   display: block;
+  touch-action: none;
 }
 
 /* Floating Interactive Canvas Toolbar */
@@ -1630,6 +1632,7 @@ body.md3-theme {
   height: 100%;
   display: block;
   cursor: crosshair;
+  touch-action: none;
 }
 
 /* ==========================================================================
@@ -1768,8 +1771,64 @@ body.md3-theme {
   justify-content: flex-end;
 }
 
+/* Mobile Slide-over Drawer Controls & Scrim */
+.mobile-drawer-backdrop {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 7, 12, 0.58);
+  backdrop-filter: blur(2px);
+  z-index: 70;
+}
+
+.mobile-drawer-backdrop.visible {
+  display: block;
+}
+
+.sidebar-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-drawer-close {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--md-shape-corner-full);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-drawer-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--md-sys-color-on-surface);
+}
+
+#btn-toggle-right-sidebar.has-selection {
+  position: relative;
+}
+
+#btn-toggle-right-sidebar.has-selection::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--md-sys-color-primary);
+  box-shadow: 0 0 6px var(--md-sys-color-primary);
+}
+
 /* ==========================================================================
-   Responsive Narrow-Viewport Rules (< 1160px / < 920px)
+   Responsive Tablet & Mobile Rules (<= 1160px / <= 900px / <= 680px)
    ========================================================================== */
 @media (max-width: 1160px) {
   .picker-label,
@@ -1796,7 +1855,7 @@ body.md3-theme {
   }
 }
 
-@media (max-width: 880px) {
+@media (max-width: 900px) {
   .app-header.md-top-app-bar {
     padding: 0 8px;
     gap: 6px;
@@ -1807,7 +1866,7 @@ body.md3-theme {
   }
 
   .kona-select {
-    max-width: 135px;
+    max-width: 165px;
     padding: 5px 8px;
   }
 
@@ -1819,12 +1878,47 @@ body.md3-theme {
     padding: 0 10px;
   }
 
+  /* Slide-over overlay drawers so schematic canvas always gets 100% width */
+  .sidebar-left.md-nav-drawer,
+  .sidebar-right.md-nav-drawer-right {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: min(84vw, 312px);
+    z-index: 80;
+    box-shadow: var(--md-elevation-4);
+    transition: transform var(--md-motion-duration-medium) var(--md-motion-easing), opacity var(--md-motion-duration-short);
+  }
+
   .sidebar-left.md-nav-drawer {
-    width: 205px;
+    left: 0;
   }
 
   .sidebar-right.md-nav-drawer-right {
-    width: 220px;
+    right: 0;
+  }
+
+  .sidebar-left.md-nav-drawer.collapsed {
+    width: min(84vw, 312px);
+    transform: translateX(-105%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .sidebar-right.md-nav-drawer-right.collapsed {
+    width: min(84vw, 312px);
+    transform: translateX(105%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .mobile-drawer-close {
+    display: inline-flex;
+  }
+
+  .sidebar-tabs.md-tab-row {
+    padding-right: 10px;
+    align-items: center;
   }
 
   .canvas-hint.md-floating-hint {
@@ -1833,5 +1927,142 @@ body.md3-theme {
 
   .sim-status {
     display: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-header.md-top-app-bar {
+    height: 50px;
+    padding: 0 6px;
+    gap: 5px;
+  }
+
+  .logo-text,
+  .action-btn-group.md-segmented-button,
+  #btn-export-json,
+  #btn-shortcuts {
+    display: none;
+  }
+
+  .header-center {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .picker-container {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .kona-select {
+    max-width: none;
+    font-size: 13px;
+    padding: 6px 8px;
+  }
+
+  .status-chip {
+    padding: 4px 9px;
+    font-size: 11px;
+  }
+
+  .header-actions {
+    gap: 5px;
+  }
+
+  .icon-btn.md-icon-button,
+  .btn.md-btn {
+    height: 34px;
+  }
+
+  /* Compact touch-friendly floating canvas toolbar */
+  .canvas-floating-toolbar.md-floating-surface {
+    top: 8px;
+    left: 8px;
+    max-width: calc(100% - 16px);
+    padding: 4px 8px;
+    gap: 4px;
+  }
+
+  .canvas-tool-btn {
+    padding: 6px 9px;
+    min-height: 30px;
+    font-size: 11px;
+  }
+
+  #snap-status-label,
+  #canvas-stats-text,
+  .canvas-floating-toolbar .toolbar-divider:last-of-type {
+    display: none;
+  }
+
+  /* Compact bottom sheet for mobile */
+  .app-bottom-drawer.md-bottom-sheet {
+    height: 210px;
+  }
+
+  .app-bottom-drawer.expanded {
+    height: 62dvh;
+  }
+
+  .drawer-header {
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .drawer-tab.md-tab {
+    padding: 0 8px;
+    font-size: 11.5px;
+    gap: 5px;
+  }
+
+  .drawer-tab.md-tab svg {
+    display: none;
+  }
+
+  .drawer-actions {
+    gap: 6px;
+  }
+
+  #btn-copy-sv span,
+  .sim-label {
+    display: none;
+  }
+
+  #btn-copy-sv {
+    padding: 0 9px;
+  }
+
+  .kona-input-sm.md-number-input {
+    width: 46px;
+    font-size: 13px;
+    padding: 4px 5px;
+  }
+
+  .waveform-sidebar {
+    width: 116px;
+  }
+
+  .wf-sig-row {
+    padding: 0 8px;
+    font-size: 10.5px;
+  }
+
+  .wf-sig-name {
+    max-width: 68px;
+  }
+
+  .wf-cursor-info {
+    font-size: 10.5px;
+  }
+
+  /* Prevent iOS Safari auto-zoom on input focus */
+  .search-input,
+  .kona-input {
+    font-size: 16px;
+  }
+
+  .param-bool {
+    width: 22px;
+    height: 22px;
   }
 }

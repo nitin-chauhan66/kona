@@ -64,7 +64,13 @@ export class KonaApp {
       onFocusInstance: (id) => this.canvas.focusInstance(id),
       onFocusNet: (id) => this.canvas.focusNet(id),
       onEnsureVisible: () => {
+        if (this.isMobileLayout()) {
+          document.querySelector('.sidebar-left')?.classList.add('collapsed');
+          document.getElementById('btn-toggle-left-sidebar')?.classList.remove('active');
+        }
         document.querySelector('.sidebar-right')?.classList.remove('collapsed');
+        document.getElementById('btn-toggle-right-sidebar')?.classList.add('active');
+        this.syncMobileBackdrop();
         this.canvas.resize();
       }
     });
@@ -74,18 +80,28 @@ export class KonaApp {
         this.canvas.render();
         this.store.commitMutation();
       },
-      onFocusInstance: (id) => this.canvas.focusInstance(id),
-      onFocusNet: (id) => this.canvas.focusNet(id),
+      onFocusInstance: (id) => {
+        if (this.isMobileLayout()) this.closeMobileSidebars();
+        this.canvas.focusInstance(id);
+      },
+      onFocusNet: (id) => {
+        if (this.isMobileLayout()) this.closeMobileSidebars();
+        this.canvas.focusNet(id);
+      },
       onDuplicateSelected: () => {
         const dup = this.canvas.duplicateSelected();
         if (dup) showToast(`Duplicated ${dup.name}`, 'info');
       },
-      onDeleteSelected: () => this.canvas.deleteSelected()
+      onDeleteSelected: () => {
+        this.canvas.deleteSelected();
+        if (this.isMobileLayout()) this.closeMobileSidebars();
+      }
     });
 
     new CatalogPanel({
       onAddModule: (moduleId) => {
         this.canvas.addModule(moduleId);
+        if (this.isMobileLayout()) this.closeMobileSidebars();
         showToast(`Added ${moduleId} to canvas`, 'success');
       }
     });
@@ -160,6 +176,11 @@ export class KonaApp {
     const redoBtn = document.getElementById('btn-redo') as HTMLButtonElement | null;
     if (undoBtn) undoBtn.disabled = !state.canUndo;
     if (redoBtn) redoBtn.disabled = !state.canRedo;
+
+    const rightBtn = document.getElementById('btn-toggle-right-sidebar');
+    if (rightBtn) {
+      rightBtn.classList.toggle('has-selection', Boolean(state.selectedInstance || state.selectedNet));
+    }
   }
 
   private setupCanvasDragDrop(): void {
@@ -284,22 +305,69 @@ export class KonaApp {
     });
   }
 
+  private isMobileLayout(): boolean {
+    return typeof window !== 'undefined' && window.innerWidth <= 900;
+  }
+
+  private syncMobileBackdrop(): void {
+    const backdrop = document.getElementById('mobile-drawer-backdrop');
+    if (!backdrop) return;
+    const leftOpen = !document.querySelector('.sidebar-left')?.classList.contains('collapsed');
+    const rightOpen = !document.querySelector('.sidebar-right')?.classList.contains('collapsed');
+    backdrop.classList.toggle('visible', this.isMobileLayout() && (leftOpen || rightOpen));
+  }
+
+  private closeMobileSidebars(): void {
+    document.querySelector('.sidebar-left')?.classList.add('collapsed');
+    document.querySelector('.sidebar-right')?.classList.add('collapsed');
+    document.getElementById('btn-toggle-left-sidebar')?.classList.remove('active');
+    document.getElementById('btn-toggle-right-sidebar')?.classList.remove('active');
+    this.syncMobileBackdrop();
+  }
+
   private setupSidebarToggles(): void {
     const leftSidebar = document.querySelector('.sidebar-left');
     const rightSidebar = document.querySelector('.sidebar-right');
     const leftBtn = document.getElementById('btn-toggle-left-sidebar');
     const rightBtn = document.getElementById('btn-toggle-right-sidebar');
+    const backdrop = document.getElementById('mobile-drawer-backdrop');
+
+    // Start with sidebars collapsed on mobile/tablet so the canvas takes full screen
+    if (this.isMobileLayout()) {
+      this.closeMobileSidebars();
+    }
 
     leftBtn?.addEventListener('click', () => {
+      const opening = leftSidebar?.classList.contains('collapsed');
+      if (this.isMobileLayout() && opening) {
+        rightSidebar?.classList.add('collapsed');
+        rightBtn?.classList.remove('active');
+      }
       leftSidebar?.classList.toggle('collapsed');
       leftBtn.classList.toggle('active', !leftSidebar?.classList.contains('collapsed'));
+      this.syncMobileBackdrop();
       setTimeout(() => this.canvas.resize(), 220);
     });
 
     rightBtn?.addEventListener('click', () => {
+      const opening = rightSidebar?.classList.contains('collapsed');
+      if (this.isMobileLayout() && opening) {
+        leftSidebar?.classList.add('collapsed');
+        leftBtn?.classList.remove('active');
+      }
       rightSidebar?.classList.toggle('collapsed');
       rightBtn.classList.toggle('active', !rightSidebar?.classList.contains('collapsed'));
+      this.syncMobileBackdrop();
       setTimeout(() => this.canvas.resize(), 220);
+    });
+
+    backdrop?.addEventListener('click', () => this.closeMobileSidebars());
+    document.getElementById('btn-close-left-sidebar')?.addEventListener('click', () => this.closeMobileSidebars());
+    document.getElementById('btn-close-right-sidebar')?.addEventListener('click', () => this.closeMobileSidebars());
+
+    window.addEventListener('resize', () => {
+      this.syncMobileBackdrop();
+      this.canvas.resize();
     });
   }
 
@@ -327,7 +395,18 @@ export class KonaApp {
     const toggleDrawerBtn = document.getElementById('btn-toggle-drawer');
     let drawerState: 'normal' | 'minimized' | 'expanded' = 'normal';
 
+    if (typeof window !== 'undefined' && window.innerWidth <= 680) {
+      drawerEl?.classList.add('minimized');
+      drawerState = 'minimized';
+      if (toggleDrawerBtn) {
+        toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
+      }
+    }
+
     toggleDrawerBtn?.addEventListener('click', () => {
+      if (!drawerEl?.classList.contains('minimized') && !drawerEl?.classList.contains('expanded')) {
+        drawerState = 'normal';
+      }
       if (drawerState === 'normal') {
         drawerEl?.classList.add('minimized');
         drawerState = 'minimized';

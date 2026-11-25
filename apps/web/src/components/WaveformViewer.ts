@@ -162,6 +162,23 @@ export class WaveformViewer {
       this.isScrubbing = false;
     });
 
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (!this.trace || e.touches.length !== 1) return;
+      e.preventDefault();
+      this.isScrubbing = true;
+      this.updateCursorFromClientX(e.touches[0].clientX);
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchmove', (e) => {
+      if (!this.isScrubbing || !this.trace || e.touches.length !== 1) return;
+      e.preventDefault();
+      this.updateCursorFromClientX(e.touches[0].clientX);
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchend', () => {
+      this.isScrubbing = false;
+    });
+
     this.canvas.addEventListener('wheel', (e) => {
       if (!this.trace) return;
       e.preventDefault();
