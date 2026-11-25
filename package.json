@@ -1,29 +1,25 @@
 {
   "name": "kona",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "Visual Chip Design & Verification Platform",
   "workspaces": [
     "packages/*",
     "apps/*"
   ],
   "scripts": {
-    "build": "tsc -b && npm run build:web",
+    "build": "npm run build:packages && npm run build:web",
+    "build:packages": "tsc -b packages/core",
     "build:web": "node apps/web/build.mjs",
-    "typecheck": "tsc -b --pretty false",
+    "typecheck": "tsc -b --pretty false && tsc -p apps/web/tsconfig.json --noEmit --pretty false",
+    "dev": "node apps/web/dev.mjs",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "kona": "node apps/cli/dist/cli.js",
-    "dev": "node apps/web/server.mjs",
-    "watch": "node apps/cli/dist/cli.js watch examples/kona.yaml",
-    "package:web": "docker build -t kona-web:local -f apps/web/Dockerfile .",
-    "start:packaged": "docker run --rm -p 4173:4173 kona-web:local"
+    "test:eda": "npm run build:packages && node --test tests/verilator-yosys.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
     "esbuild": "^0.25.11",
+    "jsdom": "^31.0.1",
     "typescript": "^5.9.2"
-  },
-  "dependencies": {
-    "@yowasp/yosys": "^0.71.188-dev.1267",
-    "verilator-wasm": "^1.1.1"
   }
 }

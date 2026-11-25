@@ -1,138 +1,93 @@
-# Software Requirements Specification (SRS) v3.0
 
-**Product:** Kona  
-**Category:** Electronic Design Automation (EDA) — RTL verification, formal
-checking, and waveform debugging  
-**Architecture:** Local-first hybrid (browser WebAssembly, native Tauri desktop,
-and CLI)  
-**Target ecosystem:** Indian fabless semiconductor startups (180nm–28nm),
-MeitY Chips to Startup labs, and RISC-V developers
+Product Requirements Document: Kona
 
-## 1. Purpose and strategic positioning
+Product Name: Kona — Visual Chip Design & Verification Platform
+Version: 1.0
+Status: Final
 
-### 1.1 Problem statement
+1. Executive Summary
 
-Commercial verification suites cost more than ₹50L per seat annually. Open-source
-tools such as Verilator, Yosys, Icarus Verilog, and GTKWave require fragmented
-Tcl/Makefile workflows, provide weak cross-probing and SystemVerilog UVM
-ergonomics, and often lose waveform layouts. Browser-only environments impose
-memory limits and can expose proprietary RTL to third-party clouds. Verilator's
-2-state model also misses X/Z behavior relevant to silicon bugs.
+Kona is a browser-native, collaborative chip design platform that combines the template-driven accessibility of Canva with the real-time multiplayer engineering precision of Figma. It enables hardware engineers, startups, and students to visually assemble digital architectures, simulate them locally via WebAssembly, and export deterministic, production-ready SystemVerilog.
 
-### 1.2 Product vision
+Core Product Principles
 
-Kona is a zero-setup RTL verification and debugging cockpit inspired by Figma,
-Synopsys Verdi, and VS Code:
+• Deterministic RTL Output: Every visual action generates clean, human-readable, lint-free SystemVerilog (top.sv) without proprietary black-box wrappers.
+• Local-First Browser Architecture: Zero-setup web access powered by WebAssembly (Wasm) for instant linting and simulation, paired with an optional native CLI bridge (kona-cli) for heavy workloads.
+• Git & AI Native: Designs are stored as structured, diff-friendly JSON/YAML netlists (.kona.json) with built-in Model Context Protocol (MCP) support for seamless integration with VS Code, GitHub Copilot, and Claude Code.
 
-- Browser onboarding runs locally through WebAssembly with no cloud simulation
-  compute and no required IP upload.
-- Tauri desktop and the `kona` CLI provide native filesystems, Git,
-  multi-core simulation, Python/PyUVM regressions, and CI integration.
-- A shared React/TypeScript presentation layer provides Monaco RTL editing,
-  Surfer waveform debugging, and trace-grounded AI assistance.
+2. Problem Statement & Target Users
 
-## 2. System architecture and runtime modes
 
-The presentation layer communicates with a unified `IComputeEngine` abstraction
-implemented by three targets:
+Industry Bottlenecks
 
-| Target | Responsibilities |
-| --- | --- |
-| Web WASM | OPFS virtual filesystem, YoWASP/Yosys, Verilator-WASM, Surfer WASM; designs below roughly 50k gates |
-| Tauri desktop | Native filesystem/Git, multi-core Verilator, Icarus 4-state simulation, SymbiYosys, Cocotb/PyUVM |
-| Headless CLI/MCP | `kona test`, JSON output, CI execution, VS Code synchronization, and AI-agent tools |
+• Legacy UX: Desktop Electronic Design Automation (EDA) tools suffer from outdated interfaces, steep learning curves, and heavy Linux setup overhead.
+• Manual Wiring Boilerplate: Connecting Intellectual Property (IP) blocks (AXI/Wishbone buses, clocks, resets) requires thousands of lines of error-prone SystemVerilog port mapping.
+• Broken Collaboration: Monolithic or binary project files prevent clean Git branching, visual pull request diffs, and multiplayer editing.
+• Prohibitive Cost: Six-figure annual commercial EDA seat licenses block startups, independent creators, and students.
 
-## 3. Functional requirements
+Target Personas
 
-### 3.1 Workspace, interoperability, and build configuration
+1. Hardware Startups & SoC Architects: Rapidly assemble RISC-V or custom accelerator SoCs using pre-verified IP blocks without massive license costs.
+2. Senior RTL & Verification Engineers: Leverage bidirectional code-to-canvas sync, visual Git diffs, fast waveform debugging, and AI agent integration.
+3. FPGA Developers: Prototype peripherals (UART, SPI, I2C, GPIO) in seconds without launching multi-gigabyte vendor IDEs.
+4. Students & Open-Source Silicon Creators: Build and verify designs in the browser with zero local toolchain installation.
 
-- **FR-01:** Define a human-readable `kona.yaml` containing
-  `project_name`, `top_module`, `rtl_files`, `include_dirs`, `sim_mode`
-  (`fast_2state`, `accurate_4state`, or `formal`), `testbench`, and
-  `waveform_signals`.
-- **FR-02:** Desktop mode must watch standard local folders with filesystem
-  notifications so VS Code, Neovim, and Emacs edits trigger recompilation and
-  waveform refresh without proprietary filesystem lock-in.
-- **FR-03:** Projects created in the GUI must execute identically through
-  `kona run`, `kona lint`, and `kona prove` in GitHub Actions and GitLab CI.
-- **FR-04:** Provide an embedded MCP server and structured JSON CLI output so
-  Claude Code, GitHub Copilot, and other agents can run simulations, inspect
-  assertions, and read traces programmatically.
-- **FR-05:** Generate `vayu.lock` with exact Yosys, Verilator, Icarus, and
-  SymbiYosys versions for reproducible Web, Desktop, and CI runs.
+3. System Architecture
 
-### 3.2 Multi-engine simulation and formal verification
+• Schematic Canvas: Hardware-accelerated WebGL / HTML5 2D canvas supporting 60 FPS pan/zoom, orthogonal wire auto-routing, and hierarchical sub-modules.
+• Intermediate Representation (IR): Deterministic .kona.json / .kona.yaml netlist schema designed for clean Git version control.
+• Compiler & Parser Engine (Rust → Wasm):
+	• Canvas → RTL: Deterministic IEEE 1800 SystemVerilog generator.
+	• RTL → Canvas: SystemVerilog AST parser enabling two-way code/canvas synchronization.
+• In-Browser Verification Runner: Wasm-compiled Verilator and Yosys for client-side linting, synthesis checks, and VCD waveform generation.
+• MCP Server Interface: Exposes netlist state, Design Rule Check (DRC) diagnostics, and simulation logs to external AI coding assistants.
 
-- **FR-06:** Support both fast 2-state Verilator simulation and accurate
-  4-state (0, 1, X, Z) Icarus Verilog simulation.
-- **FR-07:** Provide zero-configuration Cocotb and PyUVM execution on Desktop,
-  with lightweight Pyodide unit tests on Web where supported.
-- **FR-08:** Integrate SymbiYosys (`sby`) for one-click bounded proof of
-  SystemVerilog assertions, producing a counterexample `.vcd` when a proof
-  fails.
-- **FR-09:** Monitor WebAssembly heap usage and design size. When a design
-  exceeds roughly 50,000 gates or 2GB RAM, offer a one-click Desktop handoff
-  that preserves workspace state.
+4. Phased Product Requirements
 
-### 3.3 Waveform cockpit and protocol debugging
 
-- **FR-10:** Use Surfer to reload waveforms after source/testbench changes while
-  preserving zoom, cursor, grouping, and radix settings in
-  `.vayu/wave_session.json`.
-- **FR-11:** Support bidirectional RTL/waveform cross-probing: waveform
-  transitions locate driving RTL assignments, and RTL signal hovers show the
-  active cursor value.
-- **FR-12:** Provide transaction decoders and assertion checkers for AXI4,
-  AXI4-Lite, APB, Wishbone, SPI, I2C, and UART, including human-readable
-  timeline entries such as `WRITE 0x4000_0010 [OKAY]`.
-- **FR-13:** Parse Verilator line, toggle, and branch coverage into green/red
-  editor gutter highlights and exportable HTML/JSON summaries.
+Phase 1: Minimum Viable Product (MVP)
 
-### 3.4 Trace-grounded AI verification copilot
+Goal: Validate browser-based visual SoC assembly, live SystemVerilog generation, and zero-setup Wasm simulation.
+• FR-1.1 Infinite 2D Schematic Canvas: Pan, zoom, grid snapping, multi-select, undo/redo, and orthogonal auto-routing with color-coded module ports (Inputs, Outputs, Inouts, Clocks, Resets).
+• FR-1.2 Real-Time Bus & DRC Validation: Support single-bit nets and multi-bit buses (e.g., data[31:0]). Flag bit-width mismatches, multi-driver conflicts, and unconnected clock/reset pins in real time.
+• FR-1.3 Starter IP & Template Library: Curated, parameterized open-source blocks (PicoRV32/Ibex RISC-V cores, AXI-Lite/Wishbone interconnects, UART, SPI, I2C, GPIO, Sync FIFO, Clock Divider, Block RAM) with a live parameter inspector.
+• FR-1.4 Live Split-Screen RTL Preview: Real-time, syntax-highlighted top.sv code pane with one-click copy and .zip project export.
+• FR-1.5 Local Wasm Simulation & Waveform Viewer: In-browser linting/synthesis via Yosys/Verilator Wasm and an integrated VCD waveform viewer (zoom, search, Hex/Bin/Dec radix, time cursors).
+• FR-1.6 Shareable Links: Read-only public URLs (kona.dev/p/...) for sharing interactive schematics and simulation runs.
 
-- **FR-14:** On an assertion or PyUVM scoreboard failure at timestamp `T`, extract
-  the local RTL AST slice and trace window `[T - 15 cycles, T + 2 cycles]`.
-  Explanations must cite exact signal transitions and clock timestamps and must
-  not fabricate unverified timing claims.
-- **FR-15:** Generate Cocotb/PyUVM drivers and monitors plus SVA boilerplate from
-  module ports and natural-language interface specifications.
-- **FR-16:** Support local Ollama inference and BYOK API routing so enterprise
-  and defense users can keep proprietary RTL off external services.
+Phase 2: Collaborative Team Platform (V1.0)
 
-## 4. Non-functional requirements
+Goal: Enable multi-engineer hardware teams with real-time multiplayer, Git workflows, and bidirectional RTL sync.
+• FR-2.1 Real-Time Multiplayer & Review: CRDT-backed simultaneous editing with live user cursors, presence avatars, and contextual pin comments attached to wires, ports, or modules.
+• FR-2.2 Bidirectional Code-to-Canvas Sync: Import existing SystemVerilog/Verilog repositories to auto-generate visual schematics; edits in the embedded code editor update the canvas live and vice versa.
+• FR-2.3 Hierarchical Sub-Modules: Group blocks into reusable custom components with auto-generated boundary ports and double-click drill-down navigation.
+• FR-2.4 Git-Native Integration & Visual Diffs: Native GitHub/GitLab integration with a visual schematic diff overlay (Green = added, Red = removed, Yellow = modified).
+• FR-2.5 Register Map & Firmware Header Generator: Visual Control/Status Register (CSR) editor exporting SystemRDL, HTML documentation, and C/Rust header files (.h / .rs).
 
-| Category | Target |
-| --- | --- |
-| Web performance | YoWASP lint feedback under 500ms; under 4 seconds for compile and wave render of unit designs below 20k gates |
-| Desktop performance | Native multi-core Verilator; smooth 60 FPS navigation for FST files up to 5GB |
-| Installer | Tauri binary below 30MB, with modular toolchain bundles |
-| Security | Fully offline-capable; no mandatory upload of RTL, testbenches, or waveforms |
-| Platforms | Chrome, Edge, Firefox with SharedArrayBuffer; Ubuntu/RHEL, Windows 10/11, macOS Intel/Apple Silicon |
-| Hosting | Static CDN architecture with ₹0 cloud simulation compute per active user |
+Phase 3: AI-Native & Full Silicon Flow (V2.0+)
 
-## 5. Recommended technology stack
+Goal: Scale to commercial ASIC workflows, autonomous AI design agents, and physical layout.
+• FR-3.1 Kona AI Copilot & Full MCP Integration: Natural language schematic editing, automated SystemVerilog testbench/SVA assertion generation, and deep agentic workflows inside VS Code and Claude Code.
+• FR-3.2 Visual FSM & Datapath Designer: State-bubble diagram editor with deadlock/unreachable-state detection compiling to clean always_ff / always_comb blocks.
+• FR-3.3 Cloud RTL-to-GDSII & Floorplanning: Integration with OpenLane/OpenROAD (SkyWater 130nm, GF180MCU) and interactive die floorplanning with Static Timing Analysis (STA) critical-path heatmaps.
+• FR-3.4 Enterprise Governance: Role-Based Access Control (RBAC), private organizational IP libraries, SSO/SAML, and SOC2-compliant single-tenant deployments.
 
-- **Frontend:** React 19, TypeScript, Tailwind CSS, Monaco, custom
-  SystemVerilog/SVA language support, and Surfer Rust-to-WASM.
-- **Desktop/CLI:** Tauri v2, Rust native IPC/file watching/process management,
-  and a standalone Rust or Go `kona` binary sharing the runner core.
-- **EDA core:** Yosys/YoWASP, Verilator, Icarus Verilog, SymbiYosys with Z3 or
-  Yices, Python 3, Cocotb, and PyUVM.
-- **Agent layer:** MCP in Rust or Go, local Ollama (Qwen2.5-Coder or
-  DeepSeek-Coder), and optional OpenAI/Anthropic BYOK endpoints.
+5. Non-Functional Requirements
 
-## 6. Phased delivery and grant milestone plan
+• Performance: ≥ 60 FPS canvas rendering with up to 250 modules and 1,500 nets; Wasm lint feedback under 500 ms for small/medium designs.
+• Determinism: Identical .kona.json states must produce byte-for-byte identical SystemVerilog output to eliminate noisy Git diffs.
+• Privacy & Security: Client-side Wasm execution keeps proprietary RTL inside the user's browser during local simulation; cloud storage encrypted via AES-256 at rest and TLS 1.3 in transit.
+• Platform Compatibility: Modern desktop browsers (Chrome, Edge, Firefox, Safari) plus Windows/Linux CLI companion (kona-cli).
 
-| Phase | Timeline | Key deliverables | Milestone |
-| --- | --- | --- | --- |
-| 1. Core runner and Web MVP | Weeks 1–6 | `kona.yaml`, `IComputeEngine`, Monaco/YoWASP linting, Verilator-WASM, Surfer WASM | Public Web Beta and StartInUP demo |
-| 2. Native Desktop and dual simulation | Weeks 7–12 | Tauri v2, native Verilator/Icarus toggle, persistent sessions, VS Code sync | v0.5 pilot in 2–3 C2S labs |
-| 3. PyUVM, formal, and protocols | Weeks 13–16 | Cocotb/PyUVM, SymbiYosys, AXI4-Lite/APB/SPI/UART decoders | v1.0 and fabless-user validation |
-| 4. Trace-grounded AI and MCP | Weeks 17–20 | Trace debugger, SVA/PyUVM generation, Ollama mode, MCP | Pro tier and ISM DLI DPR |
+6. Success Metrics (KPIs)
 
-## 7. Constraints and out of scope for v1.0
+• Activation Rate (MVP): ≥ 45% of new users wire a template design and export valid SystemVerilog within 10 minutes.
+• Time-to-First-Simulation: < 3 minutes from initial landing to viewing a live VCD waveform.
+• RTL Quality: ≥ 70% of exported top.sv files pass third-party linting (verilator --lint-only) with zero manual edits.
+• Collaboration Virality (V1.0): ≥ 2.5 active collaborators or share-link viewers per workspace within 30 days.
 
-Backend physical place and route, foundry-certified sub-28nm signoff STA/DRC,
-and decryption of proprietary encrypted vendor IP (`.vp` or IEEE 1735 blocks
-encrypted with Synopsys/Cadence keys) are out of scope. Kona must detect
-encrypted blocks and notify users clearly.
+7. Risks & Mitigations
+
+• Resistance from Senior Engineers: Mitigated via bidirectional RTL sync, clean human-readable code output, Git-native JSON storage, and VS Code/MCP support from Day 1.
+• Visual Clutter on Complex Chips: Mitigated through hierarchical sub-modules, named wireless net labels, and bundled bus interfaces (collapsing multi-wire protocols like AXI into single visual links).
+• Browser Compute Limits: Mitigated by handling linting and block-level simulation locally in Wasm while providing a 1-click CLI/cloud runner fallback for full-chip simulations.

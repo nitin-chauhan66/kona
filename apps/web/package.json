@@ -1,11 +1,12 @@
 {
   "name": "@kona/web",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.1.0",
-  "type": "module",
   "scripts": {
-    "dev": "node server.mjs",
-    "start": "node server.mjs",
-    "package": "docker build -t kona-web:local -f Dockerfile ../.."
+    "build": "node build.mjs",
+    "dev": "node server.mjs"
+  },
+  "dependencies": {
+    "@kona/core": "*"
   }
 }

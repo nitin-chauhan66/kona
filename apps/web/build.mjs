@@ -1,40 +1,33 @@
-import { cp, mkdir } from "node:fs/promises";
-import path from "node:path";
-import { build } from "esbuild";
+import * as esbuild from 'esbuild';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { mkdirSync, existsSync } from 'node:fs';
 
-const root = path.resolve(".");
-const publicDir = path.join(root, "apps/web/public");
-await mkdir(publicDir, { recursive: true });
-await build({
-  entryPoints: [path.join(publicDir, "app.js")],
-  bundle: true,
-  format: "esm",
-  outfile: path.join(publicDir, "app.bundle.js"),
-  platform: "browser",
-  target: "es2022",
-  external: ["node:fs/promises"],
-});
-await build({
-  entryPoints: [path.join(root, "packages/compute-contract/src/vcd.ts")],
-  bundle: true,
-  format: "esm",
-  outfile: path.join(publicDir, "vcd-parser.js"),
-  platform: "browser",
-  target: "es2022",
-});
-await build({
-  entryPoints: [path.join(root, "apps/web/public/verilator-worker-entry.js")],
-  bundle: true,
-  format: "esm",
-  outfile: path.join(publicDir, "verilator-worker.js"),
-  platform: "browser",
-  target: "es2022",
-  external: ["node:fs/promises"],
-});
-for (const wasm of ["yosys.core.wasm", "yosys.core2.wasm", "yosys.core3.wasm", "yosys.core4.wasm"]) {
-  await cp(path.join(root, "node_modules/@yowasp/yosys/gen", wasm), path.join(publicDir, wasm));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const publicDir = resolve(__dirname, 'public');
+if (!existsSync(publicDir)) {
+  mkdirSync(publicDir, { recursive: true });
 }
-await cp(
-  path.join(root, "node_modules/verilator-wasm/dist/verilator.wasm"),
-  path.join(publicDir, "verilator.wasm"),
-);
+
+async function build() {
+  console.log('[BUILD] Bundling Kona Web Cockpit...');
+  await esbuild.build({
+    entryPoints: [resolve(__dirname, 'src/index.ts')],
+    bundle: true,
+    outfile: resolve(publicDir, 'bundle.js'),
+    format: 'esm',
+    sourcemap: true,
+    target: ['es2022', 'chrome100', 'firefox100', 'safari15'],
+    define: {
+      'process.env.NODE_ENV': '"production"'
+    }
+  });
+  console.log('[BUILD] Kona Web Cockpit bundle ready: apps/web/public/bundle.js');
+}
+
+build().catch(err => {
+  console.error('[BUILD ERROR]', err);
+  process.exit(1);
+});

@@ -1,13 +1,15 @@
 services:
-  kona-web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+  web:
     image: kona-web:local
+    container_name: kona-web-server
+    working_dir: /app
+    volumes:
+      - .:/app
     ports:
       - "4173:4173"
-    volumes:
-      - kona-workspace:/opt/kona/.kona
-
-volumes:
-  kona-workspace:
+    environment:
+      - NODE_ENV=development
+      - PORT=4173
+      - HOST=0.0.0.0
+    command: npm run dev
+    restart: unless-stopped

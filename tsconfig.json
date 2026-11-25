@@ -1,7 +1,18 @@
 {
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
   "files": [],
   "references": [
-    { "path": "./packages/compute-contract" },
-    { "path": "./apps/cli" }
+    { "path": "packages/core" }
   ]
 }
