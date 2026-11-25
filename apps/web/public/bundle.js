@@ -30,7 +30,7 @@ var require_ir = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.validateKonaDesignSchema = validateKonaDesignSchema;
-    exports.serializeKonaDesign = serializeKonaDesign4;
+    exports.serializeKonaDesign = serializeKonaDesign3;
     exports.parseKonaDesign = parseKonaDesign3;
     function validateKonaDesignSchema(design) {
       const errors = [];
@@ -91,7 +91,7 @@ var require_ir = __commonJS({
       }
       return errors;
     }
-    function serializeKonaDesign4(design) {
+    function serializeKonaDesign3(design) {
       const sortedInstances = [...design.instances].sort((a, b) => a.id.localeCompare(b.id));
       const sortedNets = [...design.nets].sort((a, b) => a.id.localeCompare(b.id));
       const sortedDesign = {
@@ -2219,7 +2219,7 @@ var require_drc2 = __commonJS({
 
 // apps/web/src/app.ts
 var import_ir3 = __toESM(require_ir());
-var import_catalog6 = __toESM(require_catalog2());
+var import_catalog7 = __toESM(require_catalog2());
 var import_codegen2 = __toESM(require_codegen());
 var import_sim = __toESM(require_sim());
 
@@ -3546,24 +3546,116 @@ var HistoryManager = class {
 
 // apps/web/src/state/Persistence.ts
 var import_ir = __toESM(require_ir());
-function saveDesignToHash(design) {
-  try {
-    const json = (0, import_ir.serializeKonaDesign)(design);
-    const encoded = btoa(encodeURIComponent(json));
-    window.location.hash = `design=${encoded}`;
-  } catch {
+var import_catalog4 = __toESM(require_catalog2());
+function toBase64Url(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
   }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function fromBase64Url(str) {
+  const padded = str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+async function deflateRaw(input) {
+  const cs = new CompressionStream("deflate-raw");
+  const readPromise = new Response(cs.readable).arrayBuffer();
+  const writer = cs.writable.getWriter();
+  await writer.write(new Uint8Array(input));
+  await writer.close();
+  return new Uint8Array(await readPromise);
+}
+async function inflateRaw(input) {
+  const ds = new DecompressionStream("deflate-raw");
+  const readPromise = new Response(ds.readable).arrayBuffer();
+  const writer = ds.writable.getWriter();
+  await writer.write(new Uint8Array(input));
+  await writer.close();
+  return new Uint8Array(await readPromise);
+}
+function compactDesignJson(design) {
+  return JSON.stringify(design);
+}
+async function encodeDesignHash(design, options) {
+  if (!options.isDirty && options.templateId) {
+    if (options.templateId === import_catalog4.STARTER_TEMPLATES[0]?.id) {
+      return "";
+    }
+    return `#t=${encodeURIComponent(options.templateId)}`;
+  }
+  const minified = compactDesignJson(design);
+  const utf8 = new TextEncoder().encode(minified);
+  if (typeof CompressionStream !== "undefined" && typeof Response !== "undefined") {
+    try {
+      const compressed = await deflateRaw(utf8);
+      if (compressed.length < utf8.length) {
+        return `#z=${toBase64Url(compressed)}`;
+      }
+    } catch {
+    }
+  }
+  return `#d=${toBase64Url(utf8)}`;
+}
+var pendingHashToken = 0;
+function saveDesignToHash(design, options = { isDirty: true }) {
+  const token = ++pendingHashToken;
+  const applyHash = (hash) => {
+    if (token !== pendingHashToken) return;
+    try {
+      const base = `${window.location.pathname}${window.location.search}`;
+      window.history.replaceState(null, "", hash ? `${base}${hash}` : base);
+    } catch {
+    }
+  };
+  if (!options.isDirty && options.templateId) {
+    const hash = options.templateId === import_catalog4.STARTER_TEMPLATES[0]?.id ? "" : `#t=${encodeURIComponent(options.templateId)}`;
+    applyHash(hash);
+    return;
+  }
+  void encodeDesignHash(design, options).then(applyHash);
 }
 function loadDesignFromHash() {
   try {
     const hash = window.location.hash;
-    if (hash && hash.includes("design=")) {
+    if (!hash) return null;
+    if (hash.startsWith("#t=")) {
+      const id = decodeURIComponent(hash.slice(3));
+      const tmpl = import_catalog4.STARTER_TEMPLATES.find((t) => t.id === id);
+      if (tmpl) return { design: tmpl.createDesign(), templateId: tmpl.id };
+    }
+    if (hash.startsWith("#d=")) {
+      const bytes = fromBase64Url(hash.slice(3));
+      const json = new TextDecoder().decode(bytes);
+      const { design, errors } = (0, import_ir.parseKonaDesign)(json);
+      if (design && errors.length === 0) return { design };
+    }
+    if (hash.includes("design=")) {
       const encoded = hash.split("design=")[1];
       const json = decodeURIComponent(atob(encoded));
       const { design, errors } = (0, import_ir.parseKonaDesign)(json);
-      if (design && errors.length === 0) {
-        return design;
-      }
+      if (design && errors.length === 0) return { design };
+    }
+  } catch {
+  }
+  return null;
+}
+async function loadCompressedDesignFromHash(rawHash = typeof window !== "undefined" ? window.location.hash : "") {
+  try {
+    if (!rawHash.startsWith("#z=") || typeof DecompressionStream === "undefined") {
+      return null;
+    }
+    const compressed = fromBase64Url(rawHash.slice(3));
+    const raw = await inflateRaw(compressed);
+    const json = new TextDecoder().decode(raw);
+    const { design, errors } = (0, import_ir.parseKonaDesign)(json);
+    if (design && errors.length === 0) {
+      return { design };
     }
   } catch {
   }
@@ -3596,12 +3688,18 @@ var DesignStore = class {
   selectedInstance = null;
   selectedNet = null;
   isDirty = false;
+  templateId;
   history = new HistoryManager(40);
   listeners = /* @__PURE__ */ new Set();
-  constructor(initialDesign) {
+  constructor(initialDesign, options = {}) {
     this.design = initialDesign;
+    this.templateId = options.templateId;
+    this.isDirty = options.isDirty ?? false;
     this.history.reset((0, import_ir2.serializeKonaDesign)(initialDesign));
     this.recompute();
+    if (!options.skipInitialHashSync) {
+      saveDesignToHash(this.design, { templateId: this.templateId, isDirty: this.isDirty });
+    }
   }
   subscribe(listener) {
     this.listeners.add(listener);
@@ -3619,7 +3717,8 @@ var DesignStore = class {
       selectedNet: this.selectedNet,
       canUndo: this.history.canUndo(),
       canRedo: this.history.canRedo(),
-      isDirty: this.isDirty
+      isDirty: this.isDirty,
+      templateId: this.templateId
     };
   }
   getDesign() {
@@ -3640,17 +3739,18 @@ var DesignStore = class {
     this.isDirty = true;
     this.history.push((0, import_ir2.serializeKonaDesign)(this.design));
     this.recompute();
-    saveDesignToHash(this.design);
+    saveDesignToHash(this.design, { templateId: this.templateId, isDirty: true });
     this.emit();
   }
-  loadTemplateDesign(newDesign) {
+  loadTemplateDesign(newDesign, templateId) {
     this.design = newDesign;
-    this.isDirty = false;
+    this.templateId = templateId;
+    this.isDirty = !templateId;
     this.selectedInstance = null;
     this.selectedNet = null;
     this.history.reset((0, import_ir2.serializeKonaDesign)(newDesign));
     this.recompute();
-    saveDesignToHash(this.design);
+    saveDesignToHash(this.design, { templateId: this.templateId, isDirty: this.isDirty });
     this.emit();
   }
   undo() {
@@ -3667,10 +3767,11 @@ var DesignStore = class {
     const { design } = (0, import_ir2.parseKonaDesign)(snap);
     if (!design) return null;
     this.design = design;
+    this.isDirty = this.history.canUndo() || !this.templateId;
     this.selectedInstance = null;
     this.selectedNet = null;
     this.recompute();
-    saveDesignToHash(this.design);
+    saveDesignToHash(this.design, { templateId: this.templateId, isDirty: this.isDirty });
     this.emit();
     return this.design;
   }
@@ -3687,7 +3788,7 @@ var DesignStore = class {
 };
 
 // apps/web/src/components/CatalogPanel.ts
-var import_catalog4 = __toESM(require_catalog2());
+var import_catalog5 = __toESM(require_catalog2());
 
 // apps/web/src/utils/html.ts
 function escapeHtml(str) {
@@ -3708,7 +3809,7 @@ var CatalogPanel = class {
     this.render();
   }
   getFilteredItems() {
-    return import_catalog4.STARTER_IP_CATALOG.filter((m) => {
+    return import_catalog5.STARTER_IP_CATALOG.filter((m) => {
       const matchesCategory = this.activeFilter === "all" || m.category === this.activeFilter;
       const q = this.searchQuery;
       const matchesSearch = !q || m.name.toLowerCase().includes(q) || m.description.toLowerCase().includes(q) || m.category.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
@@ -3859,7 +3960,7 @@ var DrcPanel = class {
 };
 
 // apps/web/src/components/InspectorPanel.ts
-var import_catalog5 = __toESM(require_catalog2());
+var import_catalog6 = __toESM(require_catalog2());
 var import_drc4 = __toESM(require_drc2());
 var InspectorPanel = class {
   container;
@@ -3901,7 +4002,7 @@ var InspectorPanel = class {
   }
   renderModuleInspector(diagnostics, inst) {
     if (!this.container) return;
-    const modDef = (0, import_catalog5.getModuleDef)(inst.moduleId);
+    const modDef = (0, import_catalog6.getModuleDef)(inst.moduleId);
     const instDiags = diagnostics.filter((d) => d.instanceId === inst.id);
     let html = `
       <div class="inspector-header">
@@ -4522,8 +4623,18 @@ var KonaApp = class {
   inspectorPanel;
   rtlPreviewPanel;
   constructor() {
-    const initialDesign = loadDesignFromHash() || import_catalog6.STARTER_TEMPLATES[0].createDesign();
-    this.store = new DesignStore(initialDesign);
+    const initialHash = typeof window !== "undefined" ? window.location.hash : "";
+    const hasCompressedHash = initialHash.startsWith("#z=");
+    const loaded = hasCompressedHash ? null : loadDesignFromHash();
+    const defaultTemplate = import_catalog7.STARTER_TEMPLATES[0];
+    const initialDesign = loaded?.design || defaultTemplate.createDesign();
+    const initialTemplateId = loaded ? loaded.templateId : hasCompressedHash ? void 0 : defaultTemplate.id;
+    const initialDirty = loaded ? !loaded.templateId : hasCompressedHash;
+    this.store = new DesignStore(initialDesign, {
+      templateId: initialTemplateId,
+      isDirty: initialDirty,
+      skipInitialHashSync: hasCompressedHash
+    });
     const canvasEl = document.getElementById("schematic-canvas");
     this.canvas = new SchematicCanvas(canvasEl, this.store.getDesign());
     const wfContainer = document.getElementById("waveform-container");
@@ -4568,6 +4679,14 @@ var KonaApp = class {
     this.canvas.fitToScreen();
     if (typeof requestAnimationFrame === "function") {
       requestAnimationFrame(() => this.canvas.fitToScreen());
+    }
+    if (hasCompressedHash) {
+      void loadCompressedDesignFromHash(initialHash).then((res) => {
+        if (!res) return;
+        this.canvas.setDesign(res.design);
+        this.store.loadTemplateDesign(res.design);
+        this.canvas.fitToScreen();
+      });
     }
   }
   bindCanvasEvents() {
@@ -4635,13 +4754,17 @@ var KonaApp = class {
     container.innerHTML = `
       <label class="picker-label" for="template-select">Template:</label>
       <select id="template-select" class="kona-select">
-        ${import_catalog6.STARTER_TEMPLATES.map((t) => `<option value="${t.id}">${t.name}</option>`).join("")}
+        ${import_catalog7.STARTER_TEMPLATES.map((t) => `<option value="${t.id}">${t.name}</option>`).join("")}
       </select>
     `;
     const selectEl = container.querySelector("#template-select");
+    const activeTmplId = this.store.getState().templateId;
+    if (selectEl && activeTmplId) {
+      selectEl.value = activeTmplId;
+    }
     let lastValue = selectEl.value;
     selectEl?.addEventListener("change", () => {
-      const tmpl = import_catalog6.STARTER_TEMPLATES.find((t) => t.id === selectEl.value);
+      const tmpl = import_catalog7.STARTER_TEMPLATES.find((t) => t.id === selectEl.value);
       if (!tmpl) return;
       if (this.store.isDesignDirty() && !confirm(`Load template "${tmpl.name}"? Unsaved canvas edits will be replaced.`)) {
         selectEl.value = lastValue;
@@ -4650,7 +4773,7 @@ var KonaApp = class {
       lastValue = selectEl.value;
       const newDesign = tmpl.createDesign();
       this.canvas.setDesign(newDesign);
-      this.store.loadTemplateDesign(newDesign);
+      this.store.loadTemplateDesign(newDesign, tmpl.id);
       this.canvas.fitToScreen();
       showToast(`Loaded ${tmpl.name}`, "info");
     });
@@ -4782,8 +4905,14 @@ var KonaApp = class {
       const sv = (0, import_codegen2.generateSystemVerilog)(this.store.getDesign());
       navigator.clipboard.writeText(sv).then(() => showToast("SystemVerilog top.sv copied to clipboard!", "success"));
     });
-    document.getElementById("btn-share-link")?.addEventListener("click", () => {
-      navigator.clipboard.writeText(window.location.href).then(() => showToast("Shareable architecture link copied!", "info"));
+    document.getElementById("btn-share-link")?.addEventListener("click", async () => {
+      const state = this.store.getState();
+      const hash = await encodeDesignHash(state.design, {
+        templateId: state.templateId,
+        isDirty: state.isDirty
+      });
+      const shareUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
+      navigator.clipboard.writeText(shareUrl).then(() => showToast("Shareable architecture link copied!", "info"));
     });
   }
   setupBottomDrawerTabs() {

@@ -19,6 +19,7 @@ export interface DesignSnapshotState {
   canUndo: boolean;
   canRedo: boolean;
   isDirty: boolean;
+  templateId?: string;
 }
 
 export type DesignStoreListener = (state: DesignSnapshotState) => void;
@@ -34,13 +35,22 @@ export class DesignStore {
   private selectedInstance: KonaModuleInstance | null = null;
   private selectedNet: KonaNet | null = null;
   private isDirty = false;
+  private templateId?: string;
   private readonly history = new HistoryManager<string>(40);
   private readonly listeners = new Set<DesignStoreListener>();
 
-  constructor(initialDesign: KonaDesign) {
+  constructor(
+    initialDesign: KonaDesign,
+    options: { templateId?: string; isDirty?: boolean; skipInitialHashSync?: boolean } = {}
+  ) {
     this.design = initialDesign;
+    this.templateId = options.templateId;
+    this.isDirty = options.isDirty ?? false;
     this.history.reset(serializeKonaDesign(initialDesign));
     this.recompute();
+    if (!options.skipInitialHashSync) {
+      saveDesignToHash(this.design, { templateId: this.templateId, isDirty: this.isDirty });
+    }
   }
 
   public subscribe(listener: DesignStoreListener): () => void {
@@ -60,7 +70,8 @@ export class DesignStore {
       selectedNet: this.selectedNet,
       canUndo: this.history.canUndo(),
       canRedo: this.history.canRedo(),
-      isDirty: this.isDirty
+      isDirty: this.isDirty,
+      templateId: this.templateId
     };
   }
 
@@ -85,18 +96,19 @@ export class DesignStore {
     this.isDirty = true;
     this.history.push(serializeKonaDesign(this.design));
     this.recompute();
-    saveDesignToHash(this.design);
+    saveDesignToHash(this.design, { templateId: this.templateId, isDirty: true });
     this.emit();
   }
 
-  public loadTemplateDesign(newDesign: KonaDesign): void {
+  public loadTemplateDesign(newDesign: KonaDesign, templateId?: string): void {
     this.design = newDesign;
-    this.isDirty = false;
+    this.templateId = templateId;
+    this.isDirty = !templateId;
     this.selectedInstance = null;
     this.selectedNet = null;
     this.history.reset(serializeKonaDesign(newDesign));
     this.recompute();
-    saveDesignToHash(this.design);
+    saveDesignToHash(this.design, { templateId: this.templateId, isDirty: this.isDirty });
     this.emit();
   }
 
@@ -116,10 +128,11 @@ export class DesignStore {
     const { design } = parseKonaDesign(snap);
     if (!design) return null;
     this.design = design;
+    this.isDirty = this.history.canUndo() || !this.templateId;
     this.selectedInstance = null;
     this.selectedNet = null;
     this.recompute();
-    saveDesignToHash(this.design);
+    saveDesignToHash(this.design, { templateId: this.templateId, isDirty: this.isDirty });
     this.emit();
     return this.design;
   }

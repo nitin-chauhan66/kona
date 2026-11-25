@@ -16,7 +16,12 @@ import { generateSystemVerilog } from '../../../packages/core/dist/codegen.js';
 import { runSimulation } from '../../../packages/core/dist/sim.js';
 import { SchematicCanvas } from './canvas/index.js';
 import { DesignSnapshotState, DesignStore } from './state/DesignStore.js';
-import { downloadFile, loadDesignFromHash } from './state/Persistence.js';
+import {
+  downloadFile,
+  encodeDesignHash,
+  loadCompressedDesignFromHash,
+  loadDesignFromHash
+} from './state/Persistence.js';
 import { CatalogPanel } from './components/CatalogPanel.js';
 import { DrcPanel } from './components/DrcPanel.js';
 import { InspectorPanel } from './components/InspectorPanel.js';
@@ -33,8 +38,19 @@ export class KonaApp {
   private readonly rtlPreviewPanel: RtlPreviewPanel;
 
   constructor() {
-    const initialDesign = loadDesignFromHash() || STARTER_TEMPLATES[0].createDesign();
-    this.store = new DesignStore(initialDesign);
+    const initialHash = typeof window !== 'undefined' ? window.location.hash : '';
+    const hasCompressedHash = initialHash.startsWith('#z=');
+    const loaded = hasCompressedHash ? null : loadDesignFromHash();
+    const defaultTemplate = STARTER_TEMPLATES[0];
+    const initialDesign = loaded?.design || defaultTemplate.createDesign();
+    const initialTemplateId = loaded ? loaded.templateId : (hasCompressedHash ? undefined : defaultTemplate.id);
+    const initialDirty = loaded ? !loaded.templateId : hasCompressedHash;
+
+    this.store = new DesignStore(initialDesign, {
+      templateId: initialTemplateId,
+      isDirty: initialDirty,
+      skipInitialHashSync: hasCompressedHash
+    });
 
     const canvasEl = document.getElementById('schematic-canvas') as HTMLCanvasElement;
     this.canvas = new SchematicCanvas(canvasEl, this.store.getDesign());
@@ -88,6 +104,16 @@ export class KonaApp {
     this.canvas.fitToScreen();
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(() => this.canvas.fitToScreen());
+    }
+
+    // Hydrate deflate-raw compressed share URLs (`#z=...`) if present on load
+    if (hasCompressedHash) {
+      void loadCompressedDesignFromHash(initialHash).then((res) => {
+        if (!res) return;
+        this.canvas.setDesign(res.design);
+        this.store.loadTemplateDesign(res.design);
+        this.canvas.fitToScreen();
+      });
     }
   }
 
@@ -174,6 +200,10 @@ export class KonaApp {
     `;
 
     const selectEl = container.querySelector('#template-select') as HTMLSelectElement;
+    const activeTmplId = this.store.getState().templateId;
+    if (selectEl && activeTmplId) {
+      selectEl.value = activeTmplId;
+    }
     let lastValue = selectEl.value;
 
     selectEl?.addEventListener('change', () => {
@@ -191,7 +221,7 @@ export class KonaApp {
       lastValue = selectEl.value;
       const newDesign = tmpl.createDesign();
       this.canvas.setDesign(newDesign);
-      this.store.loadTemplateDesign(newDesign);
+      this.store.loadTemplateDesign(newDesign, tmpl.id);
       this.canvas.fitToScreen();
       showToast(`Loaded ${tmpl.name}`, 'info');
     });
@@ -335,8 +365,14 @@ export class KonaApp {
       navigator.clipboard.writeText(sv).then(() => showToast('SystemVerilog top.sv copied to clipboard!', 'success'));
     });
 
-    document.getElementById('btn-share-link')?.addEventListener('click', () => {
-      navigator.clipboard.writeText(window.location.href).then(() => showToast('Shareable architecture link copied!', 'info'));
+    document.getElementById('btn-share-link')?.addEventListener('click', async () => {
+      const state = this.store.getState();
+      const hash = await encodeDesignHash(state.design, {
+        templateId: state.templateId,
+        isDirty: state.isDirty
+      });
+      const shareUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
+      navigator.clipboard.writeText(shareUrl).then(() => showToast('Shareable architecture link copied!', 'info'));
     });
   }
 
