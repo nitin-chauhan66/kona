@@ -3032,8 +3032,6 @@ var SchematicCanvas = class {
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.floor(rect.width * dpr);
     this.canvas.height = Math.floor(rect.height * dpr);
-    this.canvas.style.width = `${rect.width}px`;
-    this.canvas.style.height = `${rect.height}px`;
     this.ctx.resetTransform?.();
     this.render();
   }
@@ -4429,8 +4427,6 @@ var WaveformViewer = class {
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.floor(rect.width * dpr);
     this.canvas.height = Math.floor(rect.height * dpr);
-    this.canvas.style.width = `${rect.width}px`;
-    this.canvas.style.height = `${rect.height}px`;
     this.ctx.resetTransform?.();
     if (this.needsFit && this.trace) {
       this.fitTimeline();
@@ -4993,6 +4989,8 @@ var KonaApp = class {
     backdrop?.addEventListener("click", () => this.closeMobileSidebars());
     document.getElementById("btn-close-left-sidebar")?.addEventListener("click", () => this.closeMobileSidebars());
     document.getElementById("btn-close-right-sidebar")?.addEventListener("click", () => this.closeMobileSidebars());
+    leftSidebar?.addEventListener("transitionend", () => this.canvas.resize());
+    rightSidebar?.addEventListener("transitionend", () => this.canvas.resize());
     window.addEventListener("resize", () => {
       this.syncMobileBackdrop();
       this.canvas.resize();

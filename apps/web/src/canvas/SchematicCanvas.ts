@@ -141,8 +141,6 @@ export class SchematicCanvas {
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.floor(rect.width * dpr);
     this.canvas.height = Math.floor(rect.height * dpr);
-    this.canvas.style.width = `${rect.width}px`;
-    this.canvas.style.height = `${rect.height}px`;
     this.ctx.resetTransform?.();
     this.render();
   }

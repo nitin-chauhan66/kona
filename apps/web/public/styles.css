@@ -431,7 +431,7 @@ body.md3-theme {
   overflow: hidden;
 }
 
-.sidebar-left.collapsed {
+.sidebar-left.md-nav-drawer.collapsed {
   width: 0;
   border-right: none;
   opacity: 0;
@@ -817,7 +817,7 @@ body.md3-theme {
   overflow: hidden;
 }
 
-.sidebar-right.collapsed {
+.sidebar-right.md-nav-drawer-right.collapsed {
   width: 0;
   border-left: none;
   opacity: 0;

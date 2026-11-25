@@ -365,6 +365,9 @@ export class KonaApp {
     document.getElementById('btn-close-left-sidebar')?.addEventListener('click', () => this.closeMobileSidebars());
     document.getElementById('btn-close-right-sidebar')?.addEventListener('click', () => this.closeMobileSidebars());
 
+    leftSidebar?.addEventListener('transitionend', () => this.canvas.resize());
+    rightSidebar?.addEventListener('transitionend', () => this.canvas.resize());
+
     window.addEventListener('resize', () => {
       this.syncMobileBackdrop();
       this.canvas.resize();
