@@ -1,4 +1,4 @@
-export type ToastType = 'success' | 'info' | 'warning';
+export type ToastType = 'success' | 'info' | 'warning' | 'error';
 
 export function showToast(message: string, type: ToastType = 'info'): void {
   const container = document.getElementById('toast-container');

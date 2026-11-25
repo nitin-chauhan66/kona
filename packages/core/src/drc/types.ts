@@ -10,6 +10,15 @@ export type DrcRuleId =
   | 'DANGLING_NET'
   | 'INVALID_PORT'
   | 'MISSING_MODULE'
+  | 'UNKNOWN_PDK'
+  | 'PDK_CLOCK_LIMIT'
+  | 'PDK_UTILIZATION'
+  | 'SRAM_MACRO_REQUIRED'
+  | 'ADDRESS_MAP_OVERLAP'
+  | 'PACKAGE_PIN_OVERFLOW'
+  | 'POWER_BUDGET_EXCEEDED'
+  | 'AREA_BUDGET_EXCEEDED'
+  | 'INVALID_SV_IDENTIFIER'
   | (string & {});
 
 export interface DrcDiagnostic {

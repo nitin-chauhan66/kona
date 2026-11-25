@@ -172,20 +172,30 @@ export async function loadCompressedDesignFromHash(
   return null;
 }
 
-export function downloadFile(content: string, filename: string, mimeType: string): void {
+export function downloadFile(content: string | Uint8Array, filename: string, mimeType: string): void {
   const a = document.createElement('a');
   a.download = filename;
 
   if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-    const blob = new Blob([content], { type: mimeType });
+    const part = content instanceof Uint8Array ? new Uint8Array(content) : content;
+    const blob = new Blob([part as BlobPart], { type: mimeType });
     const url = URL.createObjectURL(blob);
     a.href = url;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  } else {
+  } else if (typeof content === 'string') {
     a.href = `data:${mimeType};charset=utf-8,` + encodeURIComponent(content);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } else {
+    let binary = '';
+    for (let i = 0; i < content.length; i++) {
+      binary += String.fromCharCode(content[i]);
+    }
+    a.href = `data:${mimeType};base64,` + btoa(binary);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

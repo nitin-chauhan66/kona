@@ -64,12 +64,41 @@ export interface KonaDesignMetadata {
   version: string;
 }
 
+export type PdkId = 'sky130A' | 'gf180mcuD' | 'sg13g2';
+export type KonaDiePreset = 'auto' | 'mpw_small' | 'mpw_medium' | 'mpw_large';
+export type KonaPackageType = 'QFN32' | 'QFN48' | 'QFN64' | 'DIP40';
+export type KonaShuttleTarget = 'librelane_mpw' | 'tiny_tapeout' | 'cdac_chipin';
+export type KonaSramMode = 'openram_macro' | 'dff_array';
+export type KonaPinEdge = 'N' | 'S' | 'E' | 'W';
+
+export interface KonaChipSpec {
+  targetApplication?: string;
+  author?: string;
+  powerBudgetMw?: number;
+  maxAreaMm2?: number;
+  notes?: string;
+}
+
+export interface KonaSiliconConfig {
+  pdkId: PdkId;
+  clockFreqMhz: number;
+  coreUtilization: number;
+  diePreset: KonaDiePreset;
+  packageType: KonaPackageType;
+  shuttleTarget: KonaShuttleTarget;
+  sramMode: KonaSramMode;
+  includeIoPads: boolean;
+  pinEdges?: Record<string, KonaPinEdge>;
+}
+
 export interface KonaDesign {
   version: '1.0';
   name: string;
   topModule: string;
   instances: KonaModuleInstance[];
   nets: KonaNet[];
+  spec?: KonaChipSpec;
+  silicon?: KonaSiliconConfig;
   metadata: KonaDesignMetadata;
 }
 
@@ -137,6 +166,44 @@ export function validateKonaDesignSchema(design: unknown): string[] {
     }
   }
 
+  if (d.silicon !== undefined) {
+    const s = d.silicon as Partial<KonaSiliconConfig>;
+    if (!s || typeof s !== 'object') {
+      errors.push('Design "silicon" must be an object');
+    } else {
+      if (!s.pdkId || !['sky130A', 'gf180mcuD', 'sg13g2'].includes(s.pdkId)) {
+        errors.push(`Invalid silicon.pdkId "${String(s.pdkId)}"`);
+      }
+      if (typeof s.clockFreqMhz !== 'number' || s.clockFreqMhz <= 0) {
+        errors.push('silicon.clockFreqMhz must be a positive number');
+      }
+      if (typeof s.coreUtilization !== 'number' || s.coreUtilization <= 0 || s.coreUtilization > 1) {
+        errors.push('silicon.coreUtilization must be between 0 and 1');
+      }
+      if (s.pinEdges !== undefined) {
+        for (const [pin, edge] of Object.entries(s.pinEdges)) {
+          if (!['N', 'S', 'E', 'W'].includes(edge)) {
+            errors.push(`Invalid pin edge "${String(edge)}" for pin "${pin}"`);
+          }
+        }
+      }
+    }
+  }
+
+  if (d.spec !== undefined) {
+    const sp = d.spec as Partial<KonaChipSpec>;
+    if (!sp || typeof sp !== 'object') {
+      errors.push('Design "spec" must be an object');
+    } else {
+      if (sp.powerBudgetMw !== undefined && (typeof sp.powerBudgetMw !== 'number' || sp.powerBudgetMw <= 0)) {
+        errors.push('spec.powerBudgetMw must be a positive number');
+      }
+      if (sp.maxAreaMm2 !== undefined && (typeof sp.maxAreaMm2 !== 'number' || sp.maxAreaMm2 <= 0)) {
+        errors.push('spec.maxAreaMm2 must be a positive number');
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -169,6 +236,33 @@ export function serializeKonaDesign(design: KonaDesign): string {
       ...(net.source ? { source: { instanceId: net.source.instanceId, portId: net.source.portId } } : {}),
       targets: [...net.targets].sort((a, b) => (a.instanceId + a.portId).localeCompare(b.instanceId + b.portId))
     })),
+    ...(design.spec ? {
+      spec: {
+        ...(design.spec.targetApplication !== undefined ? { targetApplication: design.spec.targetApplication } : {}),
+        ...(design.spec.author !== undefined ? { author: design.spec.author } : {}),
+        ...(design.spec.powerBudgetMw !== undefined ? { powerBudgetMw: design.spec.powerBudgetMw } : {}),
+        ...(design.spec.maxAreaMm2 !== undefined ? { maxAreaMm2: design.spec.maxAreaMm2 } : {}),
+        ...(design.spec.notes !== undefined ? { notes: design.spec.notes } : {})
+      }
+    } : {}),
+    ...(design.silicon ? {
+      silicon: {
+        pdkId: design.silicon.pdkId,
+        clockFreqMhz: design.silicon.clockFreqMhz,
+        coreUtilization: design.silicon.coreUtilization,
+        diePreset: design.silicon.diePreset,
+        packageType: design.silicon.packageType,
+        shuttleTarget: design.silicon.shuttleTarget,
+        sramMode: design.silicon.sramMode,
+        includeIoPads: design.silicon.includeIoPads,
+        ...(design.silicon.pinEdges ? {
+          pinEdges: Object.keys(design.silicon.pinEdges).sort().reduce((acc, k) => {
+            acc[k] = design.silicon!.pinEdges![k];
+            return acc;
+          }, {} as Record<string, KonaPinEdge>)
+        } : {})
+      }
+    } : {}),
     metadata: {
       ...design.metadata,
       version: design.metadata.version || '1.0'

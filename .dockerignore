@@ -1,0 +1,7 @@
+node_modules
+.git
+.github
+.kona-test-artifacts
+tapeout-work
+packages/*/dist
+packages/*/tsconfig.tsbuildinfo

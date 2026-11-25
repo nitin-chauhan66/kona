@@ -10,7 +10,7 @@
  * - URL Persistence & Export Actions (FR-1.6)
  */
 
-import { serializeKonaDesign } from '../../../packages/core/dist/ir.js';
+import { parseKonaDesign, serializeKonaDesign } from '../../../packages/core/dist/ir.js';
 import { STARTER_TEMPLATES } from '../../../packages/core/dist/catalog.js';
 import { generateSystemVerilog } from '../../../packages/core/dist/codegen.js';
 import { runSimulation } from '../../../packages/core/dist/sim.js';
@@ -27,6 +27,7 @@ import { DrcPanel } from './components/DrcPanel.js';
 import { InspectorPanel } from './components/InspectorPanel.js';
 import { RtlPreviewPanel } from './components/RtlPreviewPanel.js';
 import { WaveformViewer } from './components/WaveformViewer.js';
+import { TapeoutPanel } from './components/TapeoutPanel.js';
 import { LayoutResizer } from './components/LayoutResizer.js';
 import { showToast } from './components/ToastService.js';
 
@@ -37,6 +38,7 @@ export class KonaApp {
   private readonly drcPanel: DrcPanel;
   private readonly inspectorPanel: InspectorPanel;
   private readonly rtlPreviewPanel: RtlPreviewPanel;
+  private readonly tapeoutPanel: TapeoutPanel;
   private readonly layoutResizer: LayoutResizer;
   private drawerState: 'normal' | 'minimized' | 'expanded' = 'normal';
 
@@ -62,6 +64,14 @@ export class KonaApp {
     this.waveformViewer = new WaveformViewer(wfContainer);
 
     this.rtlPreviewPanel = new RtlPreviewPanel();
+
+    this.tapeoutPanel = new TapeoutPanel({
+      onUpdateSilicon: (silicon) => {
+        const design = this.store.getDesign();
+        design.silicon = silicon;
+        this.store.commitMutation(design);
+      }
+    });
 
     this.drcPanel = new DrcPanel({
       onFocusInstance: (id) => this.canvas.focusInstance(id),
@@ -99,6 +109,13 @@ export class KonaApp {
       onDeleteSelected: () => {
         this.canvas.deleteSelected();
         if (this.isMobileLayout()) this.closeMobileSidebars();
+      },
+      onUpdateDesignSpec: (patch) => {
+        const design = this.store.getDesign();
+        if (patch.name) design.name = patch.name;
+        if (patch.topModule) design.topModule = patch.topModule;
+        if (patch.spec) design.spec = patch.spec;
+        this.store.commitMutation(design);
       }
     });
 
@@ -177,7 +194,8 @@ export class KonaApp {
   private onStoreStateChange(state: DesignSnapshotState): void {
     this.canvas.setDiagnostics(state.diagnostics);
     this.drcPanel.update(state.diagnostics);
-    this.rtlPreviewPanel.render(state.systemVerilog);
+    this.rtlPreviewPanel.render(state.systemVerilog, state.design);
+    this.tapeoutPanel.render(state.design);
     this.inspectorPanel.render(
       state.design,
       state.diagnostics,
@@ -198,9 +216,15 @@ export class KonaApp {
     if (redoBtn) redoBtn.disabled = !state.canRedo;
 
     const rightBtn = document.getElementById('btn-toggle-right-sidebar');
+    const hasSelection = Boolean(state.selectedInstance || state.selectedNet);
     if (rightBtn) {
-      rightBtn.classList.toggle('has-selection', Boolean(state.selectedInstance || state.selectedNet));
+      rightBtn.classList.toggle('has-selection', hasSelection);
     }
+
+    const inspectBtn = document.getElementById('btn-canvas-inspect') as HTMLButtonElement | null;
+    const deleteBtn = document.getElementById('btn-canvas-delete') as HTMLButtonElement | null;
+    if (inspectBtn) inspectBtn.disabled = !hasSelection;
+    if (deleteBtn) deleteBtn.disabled = !hasSelection;
   }
 
   private setupCanvasDragDrop(): void {
@@ -220,13 +244,31 @@ export class KonaApp {
       e.preventDefault();
       viewport.classList.remove('drag-over');
       const modId = e.dataTransfer?.getData('text/kona-module');
-      if (!modId) return;
+      if (modId) {
+        const rect = canvasEl.getBoundingClientRect();
+        const world = this.canvas.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        this.canvas.addModuleAt(modId, world.x - 100, world.y - 60);
+        showToast(`Dropped ${modId} onto canvas`, 'success');
+        return;
+      }
 
-      const rect = canvasEl.getBoundingClientRect();
-      const world = this.canvas.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-      this.canvas.addModuleAt(modId, world.x - 100, world.y - 60);
-      showToast(`Dropped ${modId} onto canvas`, 'success');
+      const file = e.dataTransfer?.files?.[0];
+      if (file && file.name.endsWith('.json')) {
+        void file.text().then((txt) => this.importKonaJsonString(txt, file.name));
+      }
     });
+  }
+
+  private importKonaJsonString(jsonText: string, sourceName = 'design.kona.json'): void {
+    const { design, errors } = parseKonaDesign(jsonText);
+    if (!design || errors.length > 0) {
+      showToast(`Invalid netlist (${sourceName}): ${errors[0] || 'parse error'}`, 'error');
+      return;
+    }
+    this.canvas.setDesign(design);
+    this.store.loadTemplateDesign(design);
+    this.canvas.fitToScreen();
+    showToast(`Imported ${design.name}`, 'success');
   }
 
   private setupTemplatesPicker(): void {
@@ -237,6 +279,7 @@ export class KonaApp {
       <label class="picker-label" for="template-select">Template:</label>
       <select id="template-select" class="kona-select">
         ${STARTER_TEMPLATES.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+        <option value="__blank__">+ Blank Custom Chip</option>
       </select>
     `;
 
@@ -248,6 +291,31 @@ export class KonaApp {
     let lastValue = selectEl.value;
 
     selectEl?.addEventListener('change', () => {
+      if (selectEl.value === '__blank__') {
+        if (
+          this.store.isDesignDirty() &&
+          !confirm('Start a blank custom chip? Unsaved canvas edits will be replaced.')
+        ) {
+          selectEl.value = lastValue;
+          return;
+        }
+        lastValue = '__blank__';
+        const now = new Date().toISOString();
+        const blankDesign = {
+          version: '1.0' as const,
+          name: 'Custom SoC',
+          topModule: 'top',
+          instances: [],
+          nets: [],
+          metadata: { version: '1.0', created: now, modified: now, description: 'Blank custom chip architecture' }
+        };
+        this.canvas.setDesign(blankDesign);
+        this.store.loadTemplateDesign(blankDesign);
+        this.canvas.fitToScreen();
+        showToast('Started blank custom chip', 'info');
+        return;
+      }
+
       const tmpl = STARTER_TEMPLATES.find(t => t.id === selectEl.value);
       if (!tmpl) return;
 
@@ -302,6 +370,23 @@ export class KonaApp {
       this.canvas.setGridSnap(next);
       snapBtn.classList.toggle('active', next);
       if (snapLabel) snapLabel.textContent = next ? 'Grid Snap: 20px' : 'Grid Snap: Off';
+    });
+
+    document.getElementById('btn-canvas-inspect')?.addEventListener('click', () => {
+      if (this.isMobileLayout()) {
+        document.querySelector('.sidebar-left')?.classList.add('collapsed');
+        document.getElementById('btn-toggle-left-sidebar')?.classList.remove('active');
+      }
+      document.querySelector('.sidebar-right')?.classList.remove('collapsed');
+      document.getElementById('btn-toggle-right-sidebar')?.classList.add('active');
+      this.syncMobileBackdrop();
+      this.layoutResizer?.syncHandleVisibility();
+      this.canvas.resize();
+    });
+
+    document.getElementById('btn-canvas-delete')?.addEventListener('click', () => {
+      this.canvas.deleteSelected();
+      showToast('Removed selected item', 'info');
     });
 
     window.addEventListener('keydown', (e) => {
@@ -403,9 +488,17 @@ export class KonaApp {
     const toggleDrawerBtn = document.getElementById('btn-toggle-drawer');
     if (!toggleDrawerBtn) return;
     if (this.drawerState === 'minimized') {
+      toggleDrawerBtn.title = 'Expand Bottom Drawer';
+      toggleDrawerBtn.setAttribute('aria-label', 'Expand Bottom Drawer');
       toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
-    } else {
+    } else if (this.drawerState === 'expanded') {
+      toggleDrawerBtn.title = 'Restore Default Drawer Size';
+      toggleDrawerBtn.setAttribute('aria-label', 'Restore Default Drawer Size');
       toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+    } else {
+      toggleDrawerBtn.title = 'Minimize Bottom Drawer';
+      toggleDrawerBtn.setAttribute('aria-label', 'Minimize Bottom Drawer');
+      toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
     }
   }
 
@@ -460,6 +553,16 @@ export class KonaApp {
       }, 260);
     });
 
+    const importBtn = document.getElementById('btn-import-json');
+    const importInput = document.getElementById('import-json-input') as HTMLInputElement | null;
+    importBtn?.addEventListener('click', () => importInput?.click());
+    importInput?.addEventListener('change', () => {
+      const file = importInput.files?.[0];
+      if (!file) return;
+      void file.text().then((txt) => this.importKonaJsonString(txt, file.name));
+      importInput.value = '';
+    });
+
     document.getElementById('btn-export-json')?.addEventListener('click', () => {
       const design = this.store.getDesign();
       downloadFile(serializeKonaDesign(design), `${design.topModule || 'chip'}.kona.json`, 'application/json');
@@ -473,8 +576,11 @@ export class KonaApp {
     });
 
     document.getElementById('btn-copy-sv')?.addEventListener('click', () => {
-      const sv = generateSystemVerilog(this.store.getDesign());
-      navigator.clipboard.writeText(sv).then(() => showToast('SystemVerilog top.sv copied to clipboard!', 'success'));
+      const code = this.rtlPreviewPanel.getActiveCode() || generateSystemVerilog(this.store.getDesign());
+      const name = this.rtlPreviewPanel.getActiveFilename();
+      navigator.clipboard?.writeText(code)
+        .then(() => showToast(`${name} copied to clipboard!`, 'success'))
+        .catch(() => showToast('Clipboard access blocked by browser', 'error'));
     });
 
     document.getElementById('btn-share-link')?.addEventListener('click', async () => {
@@ -484,7 +590,9 @@ export class KonaApp {
         isDirty: state.isDirty
       });
       const shareUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
-      navigator.clipboard.writeText(shareUrl).then(() => showToast('Shareable architecture link copied!', 'info'));
+      navigator.clipboard?.writeText(shareUrl)
+        .then(() => showToast('Shareable architecture link copied!', 'info'))
+        .catch(() => showToast('Clipboard access blocked by browser', 'error'));
     });
   }
 
@@ -504,6 +612,9 @@ export class KonaApp {
         }
 
         const target = tab.getAttribute('data-target');
+        if (target && drawerEl) {
+          drawerEl.setAttribute('data-active-drawer-tab', target);
+        }
         document.querySelectorAll('.drawer-pane').forEach(p => p.classList.remove('active'));
         document.getElementById(`pane-${target}`)?.classList.add('active');
 

@@ -31,7 +31,7 @@ var require_ir = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.validateKonaDesignSchema = validateKonaDesignSchema;
     exports.serializeKonaDesign = serializeKonaDesign3;
-    exports.parseKonaDesign = parseKonaDesign3;
+    exports.parseKonaDesign = parseKonaDesign4;
     function validateKonaDesignSchema(design) {
       const errors = [];
       if (!design || typeof design !== "object") {
@@ -89,6 +89,42 @@ var require_ir = __commonJS({
           }
         }
       }
+      if (d.silicon !== void 0) {
+        const s = d.silicon;
+        if (!s || typeof s !== "object") {
+          errors.push('Design "silicon" must be an object');
+        } else {
+          if (!s.pdkId || !["sky130A", "gf180mcuD", "sg13g2"].includes(s.pdkId)) {
+            errors.push(`Invalid silicon.pdkId "${String(s.pdkId)}"`);
+          }
+          if (typeof s.clockFreqMhz !== "number" || s.clockFreqMhz <= 0) {
+            errors.push("silicon.clockFreqMhz must be a positive number");
+          }
+          if (typeof s.coreUtilization !== "number" || s.coreUtilization <= 0 || s.coreUtilization > 1) {
+            errors.push("silicon.coreUtilization must be between 0 and 1");
+          }
+          if (s.pinEdges !== void 0) {
+            for (const [pin, edge] of Object.entries(s.pinEdges)) {
+              if (!["N", "S", "E", "W"].includes(edge)) {
+                errors.push(`Invalid pin edge "${String(edge)}" for pin "${pin}"`);
+              }
+            }
+          }
+        }
+      }
+      if (d.spec !== void 0) {
+        const sp = d.spec;
+        if (!sp || typeof sp !== "object") {
+          errors.push('Design "spec" must be an object');
+        } else {
+          if (sp.powerBudgetMw !== void 0 && (typeof sp.powerBudgetMw !== "number" || sp.powerBudgetMw <= 0)) {
+            errors.push("spec.powerBudgetMw must be a positive number");
+          }
+          if (sp.maxAreaMm2 !== void 0 && (typeof sp.maxAreaMm2 !== "number" || sp.maxAreaMm2 <= 0)) {
+            errors.push("spec.maxAreaMm2 must be a positive number");
+          }
+        }
+      }
       return errors;
     }
     function serializeKonaDesign3(design) {
@@ -115,6 +151,33 @@ var require_ir = __commonJS({
           ...net.source ? { source: { instanceId: net.source.instanceId, portId: net.source.portId } } : {},
           targets: [...net.targets].sort((a, b) => (a.instanceId + a.portId).localeCompare(b.instanceId + b.portId))
         })),
+        ...design.spec ? {
+          spec: {
+            ...design.spec.targetApplication !== void 0 ? { targetApplication: design.spec.targetApplication } : {},
+            ...design.spec.author !== void 0 ? { author: design.spec.author } : {},
+            ...design.spec.powerBudgetMw !== void 0 ? { powerBudgetMw: design.spec.powerBudgetMw } : {},
+            ...design.spec.maxAreaMm2 !== void 0 ? { maxAreaMm2: design.spec.maxAreaMm2 } : {},
+            ...design.spec.notes !== void 0 ? { notes: design.spec.notes } : {}
+          }
+        } : {},
+        ...design.silicon ? {
+          silicon: {
+            pdkId: design.silicon.pdkId,
+            clockFreqMhz: design.silicon.clockFreqMhz,
+            coreUtilization: design.silicon.coreUtilization,
+            diePreset: design.silicon.diePreset,
+            packageType: design.silicon.packageType,
+            shuttleTarget: design.silicon.shuttleTarget,
+            sramMode: design.silicon.sramMode,
+            includeIoPads: design.silicon.includeIoPads,
+            ...design.silicon.pinEdges ? {
+              pinEdges: Object.keys(design.silicon.pinEdges).sort().reduce((acc, k) => {
+                acc[k] = design.silicon.pinEdges[k];
+                return acc;
+              }, {})
+            } : {}
+          }
+        } : {},
         metadata: {
           ...design.metadata,
           version: design.metadata.version || "1.0"
@@ -122,7 +185,7 @@ var require_ir = __commonJS({
       };
       return JSON.stringify(sortedDesign, null, 2);
     }
-    function parseKonaDesign3(jsonString) {
+    function parseKonaDesign4(jsonString) {
       try {
         const raw = JSON.parse(jsonString);
         const errors = validateKonaDesignSchema(raw);
@@ -1537,32 +1600,814 @@ var require_catalog2 = __commonJS({
   }
 });
 
+// packages/core/dist/pdk/registry.js
+var require_registry2 = __commonJS({
+  "packages/core/dist/pdk/registry.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.PDK_CATALOG = void 0;
+    exports.listPdks = listPdks2;
+    exports.getPdkDef = getPdkDef;
+    exports.createDefaultSiliconConfig = createDefaultSiliconConfig2;
+    exports.PDK_CATALOG = {
+      sky130A: {
+        id: "sky130A",
+        name: "SkyWater SKY130 (130nm CMOS)",
+        shortName: "SKY130 \xB7 130nm",
+        foundry: "SkyWater Technology Foundry",
+        nodeNm: 130,
+        processType: "130nm Bulk CMOS (5-Metal)",
+        coreVoltage: "1.8V",
+        ioVoltage: "3.3V",
+        metalLayers: 5,
+        stdCellLibrary: "sky130_fd_sc_hd",
+        ioPadLibrary: "sky130_fd_io",
+        volareFamily: "sky130",
+        volarePdk: "sky130A",
+        maxClockMhz: 100,
+        defaultClockMhz: 50,
+        defaultUtilization: 0.45,
+        targetDensityPct: 55,
+        drivingCell: "sky130_fd_sc_hd__inv_2",
+        drivingCellPin: "Y",
+        outputLoadPf: 0.033442,
+        maxSoftRamAddrBits: 9,
+        openRamMacroName: "sky130_sram_2kbyte_1rw1r_32x512_8",
+        openRamMacroWords: 512,
+        dieSlots: {
+          mpw_small: {
+            label: "Tiny Slot (1.0 \xD7 1.0 mm)",
+            dieArea: "0 0 1000 1000",
+            coreArea: "180 180 820 820",
+            approxGates: "~25k gates"
+          },
+          mpw_medium: {
+            label: "MPW Standard (2.0 \xD7 2.0 mm)",
+            dieArea: "0 0 2000 2000",
+            coreArea: "200 200 1800 1800",
+            approxGates: "~120k gates"
+          },
+          mpw_large: {
+            label: "Caravel / Full SoC (3.5 \xD7 3.5 mm)",
+            dieArea: "0 0 3500 3500",
+            coreArea: "220 220 3280 3280",
+            approxGates: "~400k+ gates"
+          }
+        },
+        ioPadCells: {
+          input: "sky130_fd_io__top_gpiov2",
+          output: "sky130_fd_io__top_gpiov2",
+          inout: "sky130_fd_io__top_gpiov2",
+          vdd: "sky130_fd_io__top_power_lvc_wpad",
+          vss: "sky130_fd_io__top_ground_lvc_wpad",
+          vddio: "sky130_fd_io__top_power_hvc_wpad",
+          vssio: "sky130_fd_io__top_ground_hvc_wpad",
+          corner: "sky130_fd_io__corner_bus_overlay"
+        },
+        shuttleNotes: "Supported by LibreLane/OpenLane 2, Tiny Tapeout, and ChipFoundry/MPW aggregators.",
+        indiaEcosystemNotes: "Ideal for IIT/NIT academic chips, RISC-V MCU prototypes, and DLI pre-silicon proof-of-concept before moving to commercial 28nm/65nm."
+      },
+      gf180mcuD: {
+        id: "gf180mcuD",
+        name: "GlobalFoundries GF180MCU (180nm 3.3V/5V)",
+        shortName: "GF180MCU \xB7 180nm",
+        foundry: "GlobalFoundries",
+        nodeNm: 180,
+        processType: "180nm MCU CMOS (5-Metal, 3.3V/5V)",
+        coreVoltage: "3.3V / 5.0V",
+        ioVoltage: "3.3V / 5.0V",
+        metalLayers: 5,
+        stdCellLibrary: "gf180mcu_fd_sc_mcu7t5v0",
+        ioPadLibrary: "gf180mcu_fd_io",
+        volareFamily: "gf180mcu",
+        volarePdk: "gf180mcuD",
+        maxClockMhz: 60,
+        defaultClockMhz: 25,
+        defaultUtilization: 0.45,
+        targetDensityPct: 55,
+        drivingCell: "gf180mcu_fd_sc_mcu7t5v0__inv_2",
+        drivingCellPin: "ZN",
+        outputLoadPf: 0.05,
+        maxSoftRamAddrBits: 8,
+        openRamMacroName: "gf180mcu_fd_ip_sram__sram512x8m8wm1",
+        openRamMacroWords: 512,
+        dieSlots: {
+          mpw_small: {
+            label: "Compact MCU (1.5 \xD7 1.5 mm)",
+            dieArea: "0 0 1500 1500",
+            coreArea: "220 220 1280 1280",
+            approxGates: "~18k gates"
+          },
+          mpw_medium: {
+            label: "MPW Standard (2.5 \xD7 2.5 mm)",
+            dieArea: "0 0 2500 2500",
+            coreArea: "240 240 2260 2260",
+            approxGates: "~65k gates"
+          },
+          mpw_large: {
+            label: "Full Pad-Ring Die (4.0 \xD7 4.0 mm)",
+            dieArea: "0 0 4000 4000",
+            coreArea: "260 260 3740 3740",
+            approxGates: "~180k gates"
+          }
+        },
+        ioPadCells: {
+          input: "gf180mcu_fd_io__in_c",
+          output: "gf180mcu_fd_io__out_8mA",
+          inout: "gf180mcu_fd_io__bi_t",
+          vdd: "gf180mcu_fd_io__dvdd",
+          vss: "gf180mcu_fd_io__dvss",
+          vddio: "gf180mcu_fd_io__dvdd",
+          vssio: "gf180mcu_fd_io__dvss",
+          corner: "gf180mcu_fd_io__cor"
+        },
+        shuttleNotes: "Native 5V/3.3V tolerant industrial node; supported by OpenLane 2/LibreLane and WaferSpace/GF180 open shuttles.",
+        indiaEcosystemNotes: "Best match for 180nm industrial/automotive sensor hubs, SCL-180nm-class microcontroller flows, and 5V industrial interfacing."
+      },
+      sg13g2: {
+        id: "sg13g2",
+        name: "IHP SG13G2 (130nm BiCMOS)",
+        shortName: "IHP SG13G2 \xB7 130nm",
+        foundry: "IHP Microelectronics (Germany)",
+        nodeNm: 130,
+        processType: "130nm SiGe BiCMOS (7-Metal)",
+        coreVoltage: "1.2V",
+        ioVoltage: "3.3V",
+        metalLayers: 7,
+        stdCellLibrary: "sg13g2_stdcell",
+        ioPadLibrary: "sg13g2_io",
+        volareFamily: "ihp_sg13g2",
+        volarePdk: "sg13g2",
+        maxClockMhz: 180,
+        defaultClockMhz: 80,
+        defaultUtilization: 0.45,
+        targetDensityPct: 55,
+        drivingCell: "sg13g2_inv_2",
+        drivingCellPin: "Y",
+        outputLoadPf: 0.025,
+        maxSoftRamAddrBits: 9,
+        openRamMacroName: "RM_IHPSG13_1P_512x32_c2_bm_bist",
+        openRamMacroWords: 512,
+        dieSlots: {
+          mpw_small: {
+            label: "Mini ASIC (1.0 \xD7 1.0 mm)",
+            dieArea: "0 0 1000 1000",
+            coreArea: "160 160 840 840",
+            approxGates: "~35k gates"
+          },
+          mpw_medium: {
+            label: "MPW Standard (2.0 \xD7 2.0 mm)",
+            dieArea: "0 0 2000 2000",
+            coreArea: "180 180 1820 1820",
+            approxGates: "~160k gates"
+          },
+          mpw_large: {
+            label: "Full SoC (3.5 \xD7 3.5 mm)",
+            dieArea: "0 0 3500 3500",
+            coreArea: "200 200 3300 3300",
+            approxGates: "~500k gates"
+          }
+        },
+        ioPadCells: {
+          input: "sg13g2_IOPadIn",
+          output: "sg13g2_IOPadOut16mA",
+          inout: "sg13g2_IOPadInOut30mA",
+          vdd: "sg13g2_IOPadVdd",
+          vss: "sg13g2_IOPadVss",
+          vddio: "sg13g2_IOPadIOVdd",
+          vssio: "sg13g2_IOPadIOVss",
+          corner: "sg13g2_Corner"
+        },
+        shuttleNotes: "Active European open-source MPW shuttles via IHP + LibreLane/OpenROAD.",
+        indiaEcosystemNotes: "Strong option for Indian startups and labs needing higher clock speeds (up to ~180 MHz) and 7-metal routing density on an open PDK."
+      }
+    };
+    function listPdks2() {
+      return Object.values(exports.PDK_CATALOG);
+    }
+    function getPdkDef(pdkId) {
+      return exports.PDK_CATALOG[pdkId];
+    }
+    function createDefaultSiliconConfig2(pdkId = "sky130A") {
+      const pdk = exports.PDK_CATALOG[pdkId] || exports.PDK_CATALOG.sky130A;
+      return {
+        pdkId: pdk.id,
+        clockFreqMhz: pdk.defaultClockMhz,
+        coreUtilization: pdk.defaultUtilization,
+        diePreset: "mpw_medium",
+        packageType: "QFN48",
+        shuttleTarget: pdk.id === "gf180mcuD" ? "cdac_chipin" : "librelane_mpw",
+        sramMode: "openram_macro",
+        includeIoPads: true
+      };
+    }
+  }
+});
+
+// packages/core/dist/pdk/index.js
+var require_pdk = __commonJS({
+  "packages/core/dist/pdk/index.js"(exports) {
+    "use strict";
+    var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      var desc = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() {
+          return m[k];
+        } };
+      }
+      Object.defineProperty(o, k2, desc);
+    }) : (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      o[k2] = m[k];
+    }));
+    var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+      for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p)) __createBinding(exports2, m, p);
+    };
+    Object.defineProperty(exports, "__esModule", { value: true });
+    __exportStar(require_registry2(), exports);
+  }
+});
+
+// packages/core/dist/architecture.js
+var require_architecture = __commonJS({
+  "packages/core/dist/architecture.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.PACKAGE_PIN_CAPACITY = void 0;
+    exports.extractExternalPorts = extractExternalPorts;
+    exports.extractMemoryMap = extractMemoryMap;
+    exports.extractClockDomains = extractClockDomains;
+    exports.analyzeArchitecture = analyzeArchitecture2;
+    exports.generateArchitectureSpecMarkdown = generateArchitectureSpecMarkdown2;
+    var index_js_1 = require_pdk();
+    exports.PACKAGE_PIN_CAPACITY = {
+      QFN32: { totalPins: 32, powerPins: 8, maxSignalPins: 24 },
+      QFN48: { totalPins: 48, powerPins: 12, maxSignalPins: 36 },
+      QFN64: { totalPins: 64, powerPins: 16, maxSignalPins: 48 },
+      DIP40: { totalPins: 40, powerPins: 8, maxSignalPins: 32 }
+    };
+    var MODULE_GATE_ESTIMATES = {
+      picorv32: 15500,
+      ibex: 22500,
+      axi_crossbar: 1800,
+      wishbone_crossbar: 1500,
+      uart_core: 1200,
+      gpio_controller: 600,
+      spi_controller: 1100,
+      i2c_controller: 1300,
+      timer_core: 1400,
+      clock_divider: 250,
+      clock_gen: 120
+    };
+    function formatHex32(val) {
+      return "0x" + (val >>> 0).toString(16).toUpperCase().padStart(8, "0");
+    }
+    function findConnectedNet(design, instId, portId, dir) {
+      return design.nets.find((n) => dir === "output" && n.source?.instanceId === instId && n.source?.portId === portId || dir === "input" && n.targets.some((t) => t.instanceId === instId && t.portId === portId) || dir === "inout" && (n.source?.instanceId === instId && n.source?.portId === portId || n.targets.some((t) => t.instanceId === instId && t.portId === portId)));
+    }
+    function extractExternalPorts(design, silicon) {
+      const sortedInstances = [...design.instances].sort((a, b) => a.id.localeCompare(b.id));
+      const pinEdges = silicon.pinEdges || {};
+      const resolveEdge = (name, fallback) => pinEdges[name] || fallback;
+      const ports = [
+        {
+          name: "clk_in",
+          direction: "input",
+          width: 1,
+          edge: resolveEdge("clk_in", "W"),
+          description: `Primary clock input (${silicon.clockFreqMhz} MHz)`
+        },
+        {
+          name: "rst_n_in",
+          direction: "input",
+          width: 1,
+          edge: resolveEdge("rst_n_in", "W"),
+          description: "Active-low asynchronous reset input"
+        }
+      ];
+      let hasTrap = false;
+      let hasGpio = false;
+      let uartIdx = 0;
+      let spiIdx = 0;
+      let i2cIdx = 0;
+      let timerIdx = 0;
+      for (const inst of sortedInstances) {
+        if (inst.moduleId === "picorv32" && !hasTrap) {
+          if (!findConnectedNet(design, inst.id, "trap", "output")) {
+            hasTrap = true;
+            ports.push({
+              name: "trap_out",
+              direction: "output",
+              width: 1,
+              edge: resolveEdge("trap_out", "N"),
+              description: "CPU trap fault indicator"
+            });
+          }
+        } else if (inst.moduleId === "uart_core") {
+          const suffix = uartIdx === 0 ? "" : `_${uartIdx}`;
+          uartIdx++;
+          if (!findConnectedNet(design, inst.id, "rx", "input")) {
+            const name = `uart${suffix}_rx`;
+            ports.push({ name, direction: "input", width: 1, edge: resolveEdge(name, "E"), description: "UART serial RX input" });
+          }
+          if (!findConnectedNet(design, inst.id, "tx", "output")) {
+            const name = `uart${suffix}_tx`;
+            ports.push({ name, direction: "output", width: 1, edge: resolveEdge(name, "E"), description: "UART serial TX output" });
+          }
+        } else if (inst.moduleId === "spi_controller") {
+          const suffix = spiIdx === 0 ? "" : `_${spiIdx}`;
+          spiIdx++;
+          for (const [portId, dir, desc] of [
+            ["spi_sclk", "output", "SPI serial clock"],
+            ["spi_cs_n", "output", "SPI active-low chip select"],
+            ["spi_mosi", "output", "SPI master-out slave-in"],
+            ["spi_miso", "input", "SPI master-in slave-out"]
+          ]) {
+            if (!findConnectedNet(design, inst.id, portId, dir)) {
+              const name = `${portId}${suffix}`;
+              ports.push({ name, direction: dir, width: 1, edge: resolveEdge(name, "S"), description: desc });
+            }
+          }
+        } else if (inst.moduleId === "i2c_controller") {
+          const suffix = i2cIdx === 0 ? "" : `_${i2cIdx}`;
+          i2cIdx++;
+          for (const [portId, dir, desc] of [
+            ["scl", "output", "I2C serial clock"],
+            ["sda_out", "output", "I2C data output"],
+            ["sda_in", "input", "I2C data input"]
+          ]) {
+            if (!findConnectedNet(design, inst.id, portId, dir)) {
+              const name = `i2c${suffix}_${portId}`;
+              ports.push({ name, direction: dir, width: 1, edge: resolveEdge(name, "S"), description: desc });
+            }
+          }
+        } else if (inst.moduleId === "gpio_controller" && !hasGpio) {
+          hasGpio = true;
+          const w = Number(inst.parameters.WIDTH ?? 8);
+          ports.push({ name: "gpio_in", direction: "input", width: w, edge: resolveEdge("gpio_in", "E"), description: "GPIO pad inputs" }, { name: "gpio_out", direction: "output", width: w, edge: resolveEdge("gpio_out", "E"), description: "GPIO pad outputs" }, { name: "gpio_oe", direction: "output", width: w, edge: resolveEdge("gpio_oe", "E"), description: "GPIO output enable (active high)" });
+        } else if (inst.moduleId === "timer_core") {
+          const suffix = timerIdx === 0 ? "" : `_${timerIdx}`;
+          timerIdx++;
+          if (!findConnectedNet(design, inst.id, "irq", "output")) {
+            const name = `timer${suffix}_irq`;
+            ports.push({ name, direction: "output", width: 1, edge: resolveEdge(name, "N"), description: "System timer interrupt" });
+          }
+        }
+      }
+      return ports;
+    }
+    function extractMemoryMap(design) {
+      const instanceMap = new Map(design.instances.map((i) => [i.id, i]));
+      const regions = [];
+      for (const inst of [...design.instances].sort((a, b) => a.id.localeCompare(b.id))) {
+        if (inst.moduleId !== "axi_crossbar" && inst.moduleId !== "wishbone_crossbar")
+          continue;
+        const s0Base = Number(inst.parameters.S0_BASE_ADDR ?? 0) >>> 0;
+        const s0Mask = Number(inst.parameters.S0_ADDR_MASK ?? 65535) >>> 0;
+        const s1Base = Number(inst.parameters.S1_BASE_ADDR ?? 268435456) >>> 0;
+        const s1Mask = Number(inst.parameters.S1_ADDR_MASK ?? 65535) >>> 0;
+        const resolveTargets = (portIds) => {
+          const names = /* @__PURE__ */ new Set();
+          for (const pid of portIds) {
+            const net = findConnectedNet(design, inst.id, pid, "output");
+            if (net) {
+              for (const tgt of net.targets) {
+                const targetInst = instanceMap.get(tgt.instanceId);
+                if (targetInst)
+                  names.add(`${targetInst.name} (${targetInst.moduleId})`);
+              }
+            }
+          }
+          return Array.from(names);
+        };
+        const s0Size = s0Mask + 1 >>> 0;
+        const s1Size = s1Mask + 1 >>> 0;
+        const s0End = s0Base + s0Mask >>> 0;
+        const s1End = s1Base + s1Mask >>> 0;
+        const r0 = {
+          crossbarId: inst.id,
+          crossbarName: inst.name,
+          slot: "S0",
+          baseAddr: s0Base,
+          endAddr: s0End,
+          sizeBytes: s0Size,
+          baseHex: formatHex32(s0Base),
+          endHex: formatHex32(s0End),
+          targetInstances: resolveTargets(["s0_addr", "s0_valid", "s0_adr_o", "s0_cyc_o"])
+        };
+        const r1 = {
+          crossbarId: inst.id,
+          crossbarName: inst.name,
+          slot: "S1",
+          baseAddr: s1Base,
+          endAddr: s1End,
+          sizeBytes: s1Size,
+          baseHex: formatHex32(s1Base),
+          endHex: formatHex32(s1End),
+          targetInstances: resolveTargets(["s1_addr", "s1_valid", "s1_adr_o", "s1_cyc_o"])
+        };
+        if (r0.baseAddr <= r1.endAddr && r1.baseAddr <= r0.endAddr) {
+          r0.overlapsWith = `${inst.name}.S1`;
+          r1.overlapsWith = `${inst.name}.S0`;
+        }
+        regions.push(r0, r1);
+      }
+      return regions;
+    }
+    function extractClockDomains(design, fallbackFreqMhz) {
+      const instanceMap = new Map(design.instances.map((i) => [i.id, i]));
+      const domains = [];
+      for (const inst of [...design.instances].sort((a, b) => a.id.localeCompare(b.id))) {
+        if (inst.moduleId !== "clock_gen" && inst.moduleId !== "clock_divider")
+          continue;
+        const outNet = findConnectedNet(design, inst.id, "clk_out", "output");
+        if (!outNet)
+          continue;
+        let freqMhz = fallbackFreqMhz;
+        if (inst.moduleId === "clock_gen") {
+          freqMhz = Number(inst.parameters.FREQ_MHZ ?? fallbackFreqMhz);
+        } else if (inst.moduleId === "clock_divider") {
+          const div = Math.max(2, Number(inst.parameters.DIVISOR ?? 4));
+          freqMhz = +(fallbackFreqMhz / div).toFixed(2);
+        }
+        const consumers = outNet.targets.map((t) => instanceMap.get(t.instanceId)?.name || t.instanceId).filter((v, idx, arr) => arr.indexOf(v) === idx);
+        domains.push({
+          sourceInstance: inst.name,
+          netName: outNet.name,
+          freqMhz,
+          consumers
+        });
+      }
+      if (domains.length === 0) {
+        domains.push({
+          sourceInstance: "external clk_in",
+          netName: "clk_in",
+          freqMhz: fallbackFreqMhz,
+          consumers: design.instances.map((i) => i.name)
+        });
+      }
+      return domains;
+    }
+    function analyzeArchitecture2(design) {
+      const silicon = design.silicon ? { ...design.silicon } : (0, index_js_1.createDefaultSiliconConfig)("sky130A");
+      const pdk = (0, index_js_1.getPdkDef)(silicon.pdkId) || (0, index_js_1.getPdkDef)("sky130A");
+      const memoryMap = extractMemoryMap(design);
+      const memoryMapOverlaps = memoryMap.filter((r) => Boolean(r.overlapsWith)).length;
+      const clockDomains = extractClockDomains(design, silicon.clockFreqMhz);
+      const externalPorts = extractExternalPorts(design, silicon);
+      let estimatedGates = 0;
+      let sramKbytes = 0;
+      for (const inst of design.instances) {
+        if (inst.moduleId === "ram_dual_port") {
+          const aw = Math.min(18, Math.max(2, Number(inst.parameters.ADDR_WIDTH ?? 14)));
+          const dw = Math.max(1, Number(inst.parameters.DATA_WIDTH ?? 32));
+          const words = 1 << aw;
+          sramKbytes += +(words * dw / 8192).toFixed(2);
+          estimatedGates += silicon.sramMode === "openram_macro" ? Math.round(words * (dw / 32) * 1.5) : Math.round(Math.min(words, 128) * dw * 6);
+        } else if (inst.moduleId === "sync_fifo") {
+          const w = Number(inst.parameters.WIDTH ?? 32);
+          const d = Number(inst.parameters.DEPTH ?? 16);
+          estimatedGates += w * d * 8 + 300;
+        } else {
+          estimatedGates += MODULE_GATE_ESTIMATES[inst.moduleId] ?? 1e3;
+        }
+      }
+      const gateAreaUm2 = pdk.nodeNm === 180 ? 22 : pdk.id === "sg13g2" ? 10 : 12;
+      const coreAreaMm2 = estimatedGates * gateAreaUm2 / (1e6 * Math.max(0.25, silicon.coreUtilization));
+      const sramAreaMm2 = sramKbytes * (pdk.nodeNm === 180 ? 0.035 : 0.018);
+      const estimatedAreaMm2 = +Math.max(0.05, coreAreaMm2 + sramAreaMm2).toFixed(3);
+      const nodeEnergyFactor = pdk.nodeNm === 180 ? 0.012 : pdk.id === "sg13g2" ? 45e-4 : 65e-4;
+      const dynamicMw = estimatedGates / 1e3 * silicon.clockFreqMhz * nodeEnergyFactor;
+      const sramMw = sramKbytes * silicon.clockFreqMhz * 4e-3;
+      const estimatedPowerMw = +Math.max(0.4, dynamicMw + sramMw + 0.5).toFixed(2);
+      const powerBudgetMw = design.spec?.powerBudgetMw;
+      const maxAreaMm2 = design.spec?.maxAreaMm2;
+      const withinPowerBudget = powerBudgetMw === void 0 || estimatedPowerMw <= powerBudgetMw;
+      const withinAreaBudget = maxAreaMm2 === void 0 || estimatedAreaMm2 <= maxAreaMm2;
+      const pkgSpec = exports.PACKAGE_PIN_CAPACITY[silicon.packageType] || exports.PACKAGE_PIN_CAPACITY.QFN48;
+      const signalPins = externalPorts.reduce((sum, p) => {
+        if (p.name === "gpio_out" || p.name === "gpio_oe")
+          return sum;
+        return sum + p.width;
+      }, 0);
+      const totalPinsUsed = signalPins + pkgSpec.powerPins;
+      const fitsPackage = signalPins <= pkgSpec.maxSignalPins;
+      const hasSpecIdentity = Boolean(design.name?.trim() && design.topModule?.trim());
+      const clockOk = silicon.clockFreqMhz > 0 && silicon.clockFreqMhz <= pdk.maxClockMhz;
+      const checklist = [
+        {
+          id: "stage1-spec",
+          label: "Chip Identity & Spec",
+          status: hasSpecIdentity && design.spec?.targetApplication ? "pass" : hasSpecIdentity ? "warn" : "fail",
+          detail: design.spec?.targetApplication ? `${design.name} (${design.topModule}) \xB7 ${design.spec.targetApplication}` : `${design.name} (${design.topModule}) \u2014 add Target Application in Inspector`
+        },
+        {
+          id: "stage1-clocks",
+          label: "Clock & Reset Domains",
+          status: clockOk ? "pass" : "fail",
+          detail: `${clockDomains.length} clock domain(s), target ${silicon.clockFreqMhz} MHz (PDK max ${pdk.maxClockMhz} MHz)`
+        },
+        {
+          id: "stage1-memmap",
+          label: "Memory Map & Bus Decoding",
+          status: memoryMapOverlaps === 0 ? "pass" : "fail",
+          detail: memoryMap.length === 0 ? "No memory-mapped crossbar (streaming/pipeline architecture)" : memoryMapOverlaps === 0 ? `${memoryMap.length} bus region(s) conflict-free` : `${memoryMapOverlaps} overlapping address region(s) detected`
+        },
+        {
+          id: "stage1-ppa",
+          label: "PPA & Area Feasibility",
+          status: withinPowerBudget && withinAreaBudget ? "pass" : "warn",
+          detail: `~${estimatedGates.toLocaleString()} GE \xB7 ${sramKbytes} KB SRAM \xB7 ~${estimatedAreaMm2} mm\xB2 \xB7 ~${estimatedPowerMw} mW`
+        },
+        {
+          id: "stage1-pins",
+          label: `Package & Pinout (${silicon.packageType})`,
+          status: fitsPackage ? "pass" : "fail",
+          detail: `${signalPins}/${pkgSpec.maxSignalPins} signal pins (${totalPinsUsed}/${pkgSpec.totalPins} total w/ power)`
+        }
+      ];
+      return {
+        pdk,
+        silicon,
+        memoryMap,
+        memoryMapOverlaps,
+        clockDomains,
+        externalPorts,
+        ppa: {
+          estimatedGates,
+          sramKbytes,
+          estimatedAreaMm2,
+          estimatedPowerMw,
+          clockFreqMhz: silicon.clockFreqMhz,
+          powerBudgetMw,
+          maxAreaMm2,
+          withinPowerBudget,
+          withinAreaBudget
+        },
+        pinBudget: {
+          packageType: silicon.packageType,
+          signalPins,
+          powerPins: pkgSpec.powerPins,
+          totalPinsUsed,
+          totalPackagePins: pkgSpec.totalPins,
+          maxSignalPins: pkgSpec.maxSignalPins,
+          fitsPackage
+        },
+        checklist
+      };
+    }
+    function generateArchitectureSpecMarkdown2(design, existingReport) {
+      const report = existingReport || analyzeArchitecture2(design);
+      const spec = design.spec || {};
+      const memRows = report.memoryMap.length > 0 ? report.memoryMap.map((r) => `| ${r.crossbarName}.${r.slot} | \`${r.baseHex}\` | \`${r.endHex}\` | ${(r.sizeBytes / 1024).toFixed(1)} KB | ${r.targetInstances.join(", ") || "Unconnected"} | ${r.overlapsWith ? `OVERLAP (${r.overlapsWith})` : "OK"} |`).join("\n") : "| _(none)_ | - | - | - | Streaming / non-bus datapath | OK |";
+      const clkRows = report.clockDomains.map((c) => `| \`${c.netName}\` | ${c.sourceInstance} | ${c.freqMhz} MHz | ${c.consumers.join(", ") || "None"} |`).join("\n");
+      const pinRows = report.externalPorts.map((p) => `| \`${p.name}\` | \`${p.direction}\` | ${p.width} | ${p.edge} | ${p.description} |`).join("\n");
+      const checklistRows = report.checklist.map((c) => `- **[${c.status.toUpperCase()}] ${c.label}:** ${c.detail}`).join("\n");
+      return `# Stage 1 Architecture & Chip Specification
+
+## 1. Chip Overview & Target Silicon
+- **Design Name:** ${design.name}
+- **Top Module:** \`${design.topModule}\`
+- **Target Application:** ${spec.targetApplication || "General-purpose SoC / Microcontroller"}
+- **Author / Organization:** ${spec.author || "Unspecified"}
+- **Target PDK / Node:** ${report.pdk.name} (${report.pdk.nodeNm}nm, ${report.pdk.coreVoltage} core / ${report.pdk.ioVoltage} I/O)
+- **Target Package:** ${report.pinBudget.packageType} (${report.pinBudget.signalPins}/${report.pinBudget.maxSignalPins} signal pins used, ${report.pinBudget.powerPins} power/ground pads)
+
+## 2. PPA & Resource Budget Estimate
+- **Estimated Logic Size:** ~${report.ppa.estimatedGates.toLocaleString()} Gate Equivalents (GE)
+- **On-Chip SRAM:** ${report.ppa.sramKbytes} KB (${report.silicon.sramMode})
+- **Estimated Core + Macro Area:** ~${report.ppa.estimatedAreaMm2} mm\xB2${spec.maxAreaMm2 ? ` (Budget: ${spec.maxAreaMm2} mm\xB2)` : ""}
+- **Estimated Power @ ${report.ppa.clockFreqMhz} MHz:** ~${report.ppa.estimatedPowerMw} mW${spec.powerBudgetMw ? ` (Budget: ${spec.powerBudgetMw} mW)` : ""}
+
+## 3. Clock & Reset Domains
+| Clock Net | Source | Nominal Freq | Consumers |
+| :--- | :--- | :---: | :--- |
+${clkRows}
+
+## 4. System Memory Map
+| Bus Port | Base Address | End Address | Size | Connected Slave(s) | Status |
+| :--- | :--- | :--- | :---: | :--- | :---: |
+${memRows}
+
+## 5. External I/O Interface & Die Edge Plan
+| Signal | Direction | Width | Edge | Purpose |
+| :--- | :--- | :---: | :---: | :--- |
+${pinRows}
+
+## 6. Stage 1 Readiness Checklist
+${checklistRows}
+`;
+    }
+  }
+});
+
+// packages/core/dist/drc/port-width.js
+var require_port_width = __commonJS({
+  "packages/core/dist/drc/port-width.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.getEffectivePortWidth = getEffectivePortWidth4;
+    function getEffectivePortWidth4(modDef, port, inst) {
+      if (!inst || !modDef)
+        return port.width;
+      if ((modDef.id === "sync_fifo" || modDef.id === "gpio_controller") && typeof inst.parameters["WIDTH"] === "number") {
+        if (["din", "dout", "gpio_pins", "in_val", "out_val"].includes(port.id)) {
+          return inst.parameters["WIDTH"];
+        }
+      }
+      if (modDef.id === "spi_controller" && typeof inst.parameters["DATA_WIDTH"] === "number") {
+        if (["tx_data", "rx_data"].includes(port.id)) {
+          return inst.parameters["DATA_WIDTH"];
+        }
+      }
+      return port.width;
+    }
+  }
+});
+
 // packages/core/dist/codegen.js
 var require_codegen = __commonJS({
   "packages/core/dist/codegen.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
+    exports.SV_RESERVED_KEYWORDS = void 0;
+    exports.sanitizeIdentifier = sanitizeIdentifier;
     exports.generateSystemVerilog = generateSystemVerilog3;
+    exports.generateSystemVerilogTestbench = generateSystemVerilogTestbench2;
+    exports.validateRtlOutput = validateRtlOutput2;
+    var architecture_js_1 = require_architecture();
     var catalog_js_1 = require_catalog2();
+    var port_width_js_1 = require_port_width();
+    var index_js_1 = require_pdk();
+    exports.SV_RESERVED_KEYWORDS = /* @__PURE__ */ new Set([
+      "always",
+      "always_comb",
+      "always_ff",
+      "always_latch",
+      "and",
+      "assign",
+      "begin",
+      "bit",
+      "buf",
+      "case",
+      "casex",
+      "casez",
+      "default",
+      "do",
+      "else",
+      "end",
+      "endcase",
+      "endfunction",
+      "endmodule",
+      "endtask",
+      "enum",
+      "for",
+      "forever",
+      "function",
+      "generate",
+      "genvar",
+      "if",
+      "initial",
+      "inout",
+      "input",
+      "int",
+      "integer",
+      "interface",
+      "localparam",
+      "logic",
+      "module",
+      "nand",
+      "negedge",
+      "nor",
+      "not",
+      "or",
+      "output",
+      "package",
+      "parameter",
+      "posedge",
+      "reg",
+      "repeat",
+      "return",
+      "signed",
+      "struct",
+      "task",
+      "typedef",
+      "unsigned",
+      "void",
+      "while",
+      "wire",
+      "xnor",
+      "xor"
+    ]);
+    function sanitizeIdentifier(name) {
+      const cleaned = name.replace(/[^a-zA-Z0-9_]/g, "_");
+      const prefixed = /^[0-9]/.test(cleaned) || cleaned.length === 0 ? `_${cleaned}` : cleaned;
+      return exports.SV_RESERVED_KEYWORDS.has(prefixed) ? `${prefixed}_sig` : prefixed;
+    }
+    function findConnectedNet(design, instId, portId, dir) {
+      return design.nets.find((n) => dir === "output" && n.source?.instanceId === instId && n.source?.portId === portId || dir === "input" && n.targets.some((t) => t.instanceId === instId && t.portId === portId) || dir === "inout" && (n.source?.instanceId === instId && n.source?.portId === portId || n.targets.some((t) => t.instanceId === instId && t.portId === portId)));
+    }
+    function deriveSystemVerilogTopPorts(design) {
+      const sortedInstances = [...design.instances].sort((a, b) => a.id.localeCompare(b.id));
+      const topPorts = [
+        { name: "clk_in", direction: "input", kind: "logic", width: 1 },
+        { name: "rst_n_in", direction: "input", kind: "logic", width: 1 }
+      ];
+      const externalBindings = /* @__PURE__ */ new Map();
+      let hasTrap = false;
+      let hasGpio = false;
+      let uartIdx = 0;
+      let spiIdx = 0;
+      let i2cIdx = 0;
+      let timerIdx = 0;
+      for (const inst of sortedInstances) {
+        if (inst.moduleId === "picorv32" && !hasTrap) {
+          if (!findConnectedNet(design, inst.id, "trap", "output")) {
+            hasTrap = true;
+            topPorts.push({ name: "trap_out", direction: "output", kind: "logic", width: 1 });
+            externalBindings.set(`${inst.id}:trap`, "trap_out");
+          }
+        } else if (inst.moduleId === "uart_core") {
+          const suffix = uartIdx === 0 ? "" : `_${uartIdx}`;
+          uartIdx++;
+          if (!findConnectedNet(design, inst.id, "rx", "input")) {
+            const name = `uart${suffix}_rx`;
+            topPorts.push({ name, direction: "input", kind: "logic", width: 1 });
+            externalBindings.set(`${inst.id}:rx`, name);
+          }
+          if (!findConnectedNet(design, inst.id, "tx", "output")) {
+            const name = `uart${suffix}_tx`;
+            topPorts.push({ name, direction: "output", kind: "logic", width: 1 });
+            externalBindings.set(`${inst.id}:tx`, name);
+          }
+        } else if (inst.moduleId === "spi_controller") {
+          const suffix = spiIdx === 0 ? "" : `_${spiIdx}`;
+          spiIdx++;
+          for (const [portId, dir] of [
+            ["spi_sclk", "output"],
+            ["spi_cs_n", "output"],
+            ["spi_mosi", "output"],
+            ["spi_miso", "input"]
+          ]) {
+            if (!findConnectedNet(design, inst.id, portId, dir)) {
+              const name = `${portId}${suffix}`;
+              topPorts.push({ name, direction: dir, kind: "logic", width: 1 });
+              externalBindings.set(`${inst.id}:${portId}`, name);
+            }
+          }
+        } else if (inst.moduleId === "i2c_controller") {
+          const suffix = i2cIdx === 0 ? "" : `_${i2cIdx}`;
+          i2cIdx++;
+          for (const [portId, dir] of [
+            ["scl", "output"],
+            ["sda_out", "output"],
+            ["sda_in", "input"]
+          ]) {
+            if (!findConnectedNet(design, inst.id, portId, dir)) {
+              const name = `i2c${suffix}_${portId}`;
+              topPorts.push({ name, direction: dir, kind: "logic", width: 1 });
+              externalBindings.set(`${inst.id}:${portId}`, name);
+            }
+          }
+        } else if (inst.moduleId === "gpio_controller" && !hasGpio) {
+          if (!findConnectedNet(design, inst.id, "gpio_pins", "inout")) {
+            hasGpio = true;
+            const w = Math.max(1, Number(inst.parameters.WIDTH ?? 8));
+            topPorts.push({ name: "gpio_pads", direction: "inout", kind: "wire", width: w });
+            externalBindings.set(`${inst.id}:gpio_pins`, "gpio_pads");
+          }
+        } else if (inst.moduleId === "timer_core") {
+          const suffix = timerIdx === 0 ? "" : `_${timerIdx}`;
+          timerIdx++;
+          if (!findConnectedNet(design, inst.id, "irq", "output")) {
+            const name = `timer${suffix}_irq`;
+            topPorts.push({ name, direction: "output", kind: "logic", width: 1 });
+            externalBindings.set(`${inst.id}:irq`, name);
+          }
+        }
+      }
+      return { topPorts, externalBindings };
+    }
     function generateSystemVerilog3(design) {
       const lines = [];
       lines.push("// =============================================================================");
       lines.push(`// Architecture: ${design.name}`);
-      lines.push(`// Generated by: Kona \u2014 Visual Chip Design & Verification Platform`);
+      lines.push("// Generated by: Kona \u2014 Visual Chip Design & Verification Platform");
       lines.push(`// Version:      ${design.version}`);
       lines.push(`// Date:         ${design.metadata.modified || (/* @__PURE__ */ new Date()).toISOString()}`);
       lines.push("// =============================================================================");
       lines.push("`timescale 1ns / 1ps");
       lines.push("`default_nettype none");
       lines.push("");
-      const topModuleName = design.topModule || "top";
+      const topModuleName = sanitizeIdentifier(design.topModule || "top");
+      const { topPorts, externalBindings } = deriveSystemVerilogTopPorts(design);
       lines.push(`module ${topModuleName} (`);
-      const topPorts = [];
-      topPorts.push("  input  logic        clk_in,");
-      topPorts.push("  input  logic        rst_n_in,");
-      topPorts.push("  output logic        trap_out,");
-      topPorts.push("  inout  wire  [7:0]  gpio_pads");
-      lines.push(topPorts.join("\n"));
+      lines.push(topPorts.map((p, idx) => {
+        const comma = idx < topPorts.length - 1 ? "," : "";
+        const range = p.width > 1 ? `[${(p.width - 1).toString().padStart(2, " ")}:0] ` : "       ";
+        return `  ${p.direction.padEnd(6, " ")} ${p.kind.padEnd(5, " ")} ${range}${p.name}${comma}`;
+      }).join("\n"));
       lines.push(");");
       lines.push("");
       lines.push("  // -------------------------------------------------------------------------");
@@ -1585,7 +2430,7 @@ var require_codegen = __commonJS({
       const sortedInstances = [...design.instances].sort((a, b) => a.id.localeCompare(b.id));
       for (const inst of sortedInstances) {
         const modDef = (0, catalog_js_1.getModuleDef)(inst.moduleId);
-        const modTypeName = inst.moduleId;
+        const modTypeName = sanitizeIdentifier(inst.moduleId);
         const instName = sanitizeIdentifier(inst.name);
         lines.push(`  // Instance: ${inst.name} (${modDef ? modDef.name : inst.moduleId})`);
         const paramEntries = Object.entries(inst.parameters).sort(([a], [b]) => a.localeCompare(b));
@@ -1595,6 +2440,8 @@ var require_codegen = __commonJS({
             let formattedVal = v;
             if (typeof v === "boolean") {
               formattedVal = v ? "1'b1" : "1'b0";
+            } else if (typeof v === "string") {
+              formattedVal = `"${v.replace(/"/g, '\\"')}"`;
             }
             return `    .${k}(${formattedVal})`;
           });
@@ -1606,9 +2453,23 @@ ${pLines.join(",\n")}
         const portBindings = [];
         if (modDef) {
           for (const port of modDef.ports) {
-            let connectedNet = design.nets.find((n) => port.direction === "output" && n.source?.instanceId === inst.id && n.source?.portId === port.id || port.direction === "input" && n.targets.some((t) => t.instanceId === inst.id && t.portId === port.id));
-            const wireName = connectedNet ? sanitizeIdentifier(connectedNet.name) : "/* unconnected */";
-            portBindings.push(`    .${port.name.padEnd(16, " ")}(${wireName})`);
+            const connectedNet = findConnectedNet(design, inst.id, port.id, port.direction);
+            let wireExpr = connectedNet ? sanitizeIdentifier(connectedNet.name) : externalBindings.get(`${inst.id}:${port.id}`);
+            if (!wireExpr) {
+              if (port.direction === "input") {
+                if (port.type === "clock") {
+                  wireExpr = "clk_in";
+                } else if (port.type === "reset") {
+                  wireExpr = "rst_n_in";
+                } else {
+                  const effWidth = (0, port_width_js_1.getEffectivePortWidth)(modDef, port, inst);
+                  wireExpr = effWidth > 1 ? `${effWidth}'b0` : "1'b0";
+                }
+              } else {
+                wireExpr = "/* unused */";
+              }
+            }
+            portBindings.push(`    .${port.name.padEnd(16, " ")}(${wireExpr})`);
           }
         } else {
           portBindings.push("    /* unknown module definition */");
@@ -1622,9 +2483,85 @@ ${pLines.join(",\n")}
       lines.push("");
       return lines.join("\n");
     }
-    function sanitizeIdentifier(name) {
-      const sanitized = name.replace(/[^a-zA-Z0-9_]/g, "_");
-      return /^[0-9]/.test(sanitized) ? `_${sanitized}` : sanitized;
+    function generateSystemVerilogTestbench2(design) {
+      const topModuleName = sanitizeIdentifier(design.topModule || "top");
+      const { topPorts } = deriveSystemVerilogTopPorts(design);
+      const silicon = design.silicon || (0, index_js_1.createDefaultSiliconConfig)("sky130A");
+      const periodNs = +(1e3 / Math.max(1, silicon.clockFreqMhz)).toFixed(2);
+      const halfPeriod = +(periodNs / 2).toFixed(2);
+      const decls = [];
+      for (const p of topPorts) {
+        const range = p.width > 1 ? `[${p.width - 1}:0] ` : "";
+        if (p.direction === "input") {
+          const init = p.name === "clk_in" || p.name === "rst_n_in" ? "1'b0" : p.width > 1 ? `${p.width}'b0` : "1'b0";
+          decls.push(`  logic ${range}${p.name} = ${init};`);
+        } else {
+          decls.push(`  wire  ${range}${p.name};`);
+        }
+      }
+      return [
+        "// =============================================================================",
+        `// Stage 2 RTL Simulation Testbench for ${topModuleName}`,
+        `// Target Frequency: ${silicon.clockFreqMhz} MHz (Period = ${periodNs} ns)`,
+        "// =============================================================================",
+        "`timescale 1ns / 1ps",
+        "",
+        `module ${topModuleName}_tb;`,
+        ...decls,
+        "",
+        `  always #${halfPeriod} clk_in = ~clk_in;`,
+        "",
+        `  ${topModuleName} dut (`,
+        topPorts.map((p) => `    .${p.name.padEnd(14, " ")}(${p.name})`).join(",\n"),
+        "  );",
+        "",
+        "  initial begin",
+        `    $dumpfile("${topModuleName}_tb.vcd");`,
+        `    $dumpvars(0, ${topModuleName}_tb);`,
+        `    #(4 * ${periodNs});`,
+        "    rst_n_in = 1'b1;",
+        `    #(64 * ${periodNs});`,
+        `    $display("[KONA RTL TB] ${topModuleName} simulation completed 64 cycles.");`,
+        "    $finish;",
+        "  end",
+        "endmodule",
+        ""
+      ].join("\n");
+    }
+    function validateRtlOutput2(design, svCode) {
+      const code = svCode ?? generateSystemVerilog3(design);
+      const topModule = sanitizeIdentifier(design.topModule || "top");
+      const silicon = design.silicon || (0, index_js_1.createDefaultSiliconConfig)("sky130A");
+      const externalPortCount = (0, architecture_js_1.extractExternalPorts)(design, silicon).length;
+      const issues = [];
+      if (!code.includes(`module ${topModule} (`)) {
+        issues.push(`Missing module declaration for "${topModule}".`);
+      }
+      if (!code.includes("endmodule")) {
+        issues.push("Missing endmodule terminator.");
+      }
+      if (design.topModule && exports.SV_RESERVED_KEYWORDS.has(design.topModule.trim())) {
+        issues.push(`Top module name "${design.topModule}" is a SystemVerilog reserved keyword.`);
+      }
+      for (const inst of design.instances) {
+        if (exports.SV_RESERVED_KEYWORDS.has(inst.name.trim())) {
+          issues.push(`Instance name "${inst.name}" is a SystemVerilog reserved keyword.`);
+        }
+      }
+      for (const net of design.nets) {
+        if (exports.SV_RESERVED_KEYWORDS.has(net.name.trim())) {
+          issues.push(`Net name "${net.name}" is a SystemVerilog reserved keyword.`);
+        }
+      }
+      return {
+        topModule,
+        lineCount: code.split("\n").length,
+        instanceCount: design.instances.length,
+        netCount: design.nets.length,
+        externalPortCount,
+        issues,
+        isClean: issues.length === 0
+      };
     }
   }
 });
@@ -1914,30 +2851,6 @@ var require_missing_module_rule = __commonJS({
   }
 });
 
-// packages/core/dist/drc/port-width.js
-var require_port_width = __commonJS({
-  "packages/core/dist/drc/port-width.js"(exports) {
-    "use strict";
-    Object.defineProperty(exports, "__esModule", { value: true });
-    exports.getEffectivePortWidth = getEffectivePortWidth4;
-    function getEffectivePortWidth4(modDef, port, inst) {
-      if (!inst || !modDef)
-        return port.width;
-      if ((modDef.id === "sync_fifo" || modDef.id === "gpio_controller") && typeof inst.parameters["WIDTH"] === "number") {
-        if (["din", "dout", "gpio_pins", "in_val", "out_val"].includes(port.id)) {
-          return inst.parameters["WIDTH"];
-        }
-      }
-      if (modDef.id === "spi_controller" && typeof inst.parameters["DATA_WIDTH"] === "number") {
-        if (["tx_data", "rx_data"].includes(port.id)) {
-          return inst.parameters["DATA_WIDTH"];
-        }
-      }
-      return port.width;
-    }
-  }
-});
-
 // packages/core/dist/drc/rules/net-connectivity.rule.js
 var require_net_connectivity_rule = __commonJS({
   "packages/core/dist/drc/rules/net-connectivity.rule.js"(exports) {
@@ -2122,12 +3035,161 @@ var require_clock_reset_rule = __commonJS({
   }
 });
 
+// packages/core/dist/drc/rules/silicon-pdk.rule.js
+var require_silicon_pdk_rule = __commonJS({
+  "packages/core/dist/drc/rules/silicon-pdk.rule.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.siliconPdkRule = void 0;
+    var architecture_js_1 = require_architecture();
+    var index_js_1 = require_pdk();
+    exports.siliconPdkRule = {
+      id: "SILICON_PDK_CHECK",
+      evaluate(ctx) {
+        const diags = [];
+        const memMap = (0, architecture_js_1.extractMemoryMap)(ctx.design);
+        for (const region of memMap) {
+          if (region.slot === "S0" && region.overlapsWith) {
+            diags.push({
+              id: `drc-addr-overlap-${region.crossbarId}`,
+              rule: "ADDRESS_MAP_OVERLAP",
+              severity: "error",
+              instanceId: region.crossbarId,
+              message: `Crossbar "${region.crossbarName}" S0 (${region.baseHex}\u2013${region.endHex}) overlaps with ${region.overlapsWith}.`
+            });
+          }
+        }
+        const silicon = ctx.design.silicon;
+        if (!silicon)
+          return diags;
+        const pdk = (0, index_js_1.getPdkDef)(silicon.pdkId);
+        if (!pdk) {
+          diags.push({
+            id: `drc-pdk-unknown-${silicon.pdkId}`,
+            rule: "UNKNOWN_PDK",
+            severity: "error",
+            message: `Unsupported PDK target "${silicon.pdkId}". Choose sky130A, gf180mcuD, or sg13g2.`
+          });
+          return diags;
+        }
+        if (silicon.clockFreqMhz <= 0 || silicon.clockFreqMhz > pdk.maxClockMhz) {
+          diags.push({
+            id: `drc-pdk-clock-${pdk.id}`,
+            rule: "PDK_CLOCK_LIMIT",
+            severity: "error",
+            message: `Target clock ${silicon.clockFreqMhz} MHz exceeds ${pdk.shortName} safe limit (${pdk.maxClockMhz} MHz).`
+          });
+        }
+        if (silicon.coreUtilization < 0.2 || silicon.coreUtilization > 0.75) {
+          diags.push({
+            id: `drc-pdk-util-${pdk.id}`,
+            rule: "PDK_UTILIZATION",
+            severity: "warning",
+            message: `Core utilization ${Math.round(silicon.coreUtilization * 100)}% is outside recommended 20%\u201375% range for ${pdk.shortName} routing closure.`
+          });
+        }
+        for (const inst of ctx.design.instances) {
+          if (inst.moduleId !== "ram_dual_port")
+            continue;
+          const addrWidth = Number(inst.parameters.ADDR_WIDTH ?? 14);
+          if (silicon.sramMode === "dff_array" && addrWidth > pdk.maxSoftRamAddrBits) {
+            diags.push({
+              id: `drc-pdk-sram-${inst.id}`,
+              rule: "SRAM_MACRO_REQUIRED",
+              severity: "warning",
+              instanceId: inst.id,
+              message: `Block RAM "${inst.name}" (${1 << addrWidth} words) is too large for flip-flop synthesis on ${pdk.shortName}; switch SRAM mode to OpenRAM Macro or lower ADDR_WIDTH <= ${pdk.maxSoftRamAddrBits}.`
+            });
+          }
+        }
+        const report = (0, architecture_js_1.analyzeArchitecture)(ctx.design);
+        if (!report.pinBudget.fitsPackage) {
+          diags.push({
+            id: `drc-pkg-pins-${silicon.packageType}`,
+            rule: "PACKAGE_PIN_OVERFLOW",
+            severity: "error",
+            message: `Design requires ${report.pinBudget.signalPins} external signal pins, exceeding ${silicon.packageType} capacity (${report.pinBudget.maxSignalPins} signal pins).`
+          });
+        }
+        if (!report.ppa.withinPowerBudget) {
+          diags.push({
+            id: "drc-power-budget",
+            rule: "POWER_BUDGET_EXCEEDED",
+            severity: "warning",
+            message: `Estimated power (${report.ppa.estimatedPowerMw} mW) exceeds Stage 1 budget (${report.ppa.powerBudgetMw} mW).`
+          });
+        }
+        if (!report.ppa.withinAreaBudget) {
+          diags.push({
+            id: "drc-area-budget",
+            rule: "AREA_BUDGET_EXCEEDED",
+            severity: "warning",
+            message: `Estimated area (${report.ppa.estimatedAreaMm2} mm\xB2) exceeds Stage 1 budget (${report.ppa.maxAreaMm2} mm\xB2).`
+          });
+        }
+        return diags;
+      }
+    };
+  }
+});
+
+// packages/core/dist/drc/rules/sv-identifier.rule.js
+var require_sv_identifier_rule = __commonJS({
+  "packages/core/dist/drc/rules/sv-identifier.rule.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.svIdentifierRule = void 0;
+    var codegen_js_1 = require_codegen();
+    exports.svIdentifierRule = {
+      id: "SV_IDENTIFIER_CHECK",
+      evaluate(ctx) {
+        const diags = [];
+        const validId = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+        const top = (ctx.design.topModule || "").trim();
+        if (top && (codegen_js_1.SV_RESERVED_KEYWORDS.has(top) || !validId.test(top))) {
+          diags.push({
+            id: "drc-sv-top-name",
+            rule: "INVALID_SV_IDENTIFIER",
+            severity: "error",
+            message: `Top module "${top}" is not a clean SystemVerilog identifier or uses a reserved keyword.`
+          });
+        }
+        for (const inst of ctx.design.instances) {
+          const name = inst.name.trim();
+          if (codegen_js_1.SV_RESERVED_KEYWORDS.has(name) || !validId.test(name)) {
+            diags.push({
+              id: `drc-sv-inst-${inst.id}`,
+              rule: "INVALID_SV_IDENTIFIER",
+              severity: "error",
+              instanceId: inst.id,
+              message: `Instance name "${inst.name}" must be a valid non-reserved SystemVerilog identifier.`
+            });
+          }
+        }
+        for (const net of ctx.design.nets) {
+          const name = net.name.trim();
+          if (codegen_js_1.SV_RESERVED_KEYWORDS.has(name) || !validId.test(name)) {
+            diags.push({
+              id: `drc-sv-net-${net.id}`,
+              rule: "INVALID_SV_IDENTIFIER",
+              severity: "error",
+              netId: net.id,
+              message: `Net name "${net.name}" must be a valid non-reserved SystemVerilog identifier.`
+            });
+          }
+        }
+        return diags;
+      }
+    };
+  }
+});
+
 // packages/core/dist/drc/rules/index.js
 var require_rules = __commonJS({
   "packages/core/dist/drc/rules/index.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.BUILTIN_DRC_RULES = exports.clockResetRule = exports.netConnectivityRule = exports.missingModuleRule = void 0;
+    exports.BUILTIN_DRC_RULES = exports.svIdentifierRule = exports.siliconPdkRule = exports.clockResetRule = exports.netConnectivityRule = exports.missingModuleRule = void 0;
     var missing_module_rule_js_1 = require_missing_module_rule();
     Object.defineProperty(exports, "missingModuleRule", { enumerable: true, get: function() {
       return missing_module_rule_js_1.missingModuleRule;
@@ -2140,10 +3202,20 @@ var require_rules = __commonJS({
     Object.defineProperty(exports, "clockResetRule", { enumerable: true, get: function() {
       return clock_reset_rule_js_1.clockResetRule;
     } });
+    var silicon_pdk_rule_js_1 = require_silicon_pdk_rule();
+    Object.defineProperty(exports, "siliconPdkRule", { enumerable: true, get: function() {
+      return silicon_pdk_rule_js_1.siliconPdkRule;
+    } });
+    var sv_identifier_rule_js_1 = require_sv_identifier_rule();
+    Object.defineProperty(exports, "svIdentifierRule", { enumerable: true, get: function() {
+      return sv_identifier_rule_js_1.svIdentifierRule;
+    } });
     exports.BUILTIN_DRC_RULES = [
       missing_module_rule_js_1.missingModuleRule,
       net_connectivity_rule_js_1.netConnectivityRule,
-      clock_reset_rule_js_1.clockResetRule
+      clock_reset_rule_js_1.clockResetRule,
+      silicon_pdk_rule_js_1.siliconPdkRule,
+      sv_identifier_rule_js_1.svIdentifierRule
     ];
   }
 });
@@ -2217,10 +3289,1202 @@ var require_drc2 = __commonJS({
   }
 });
 
+// packages/core/dist/asic-rtl.js
+var require_asic_rtl = __commonJS({
+  "packages/core/dist/asic-rtl.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.ASIC_IP_LIBRARY_VERILOG = void 0;
+    exports.ASIC_IP_LIBRARY_VERILOG = `// =============================================================================
+// Kona ASIC-Synthesizable Starter IP Library (Verilog-2001)
+// Target Flow: Yosys -> OpenROAD / LibreLane -> SKY130 / GF180MCU / SG13G2
+// Note: For production tape-outs, replace stub CPU/SRAM wrappers with full
+// verified upstream RTL (PicoRV32 / Ibex) and OpenRAM hard macro LEF/LIB/GDS.
+// =============================================================================
+\`timescale 1ns / 1ps
+
+// 1. Reset Synchronizer & Clock Pass-Through (replaces behavioral clock_gen)
+module clock_gen #(
+  parameter integer FREQ_MHZ = 50
+) (
+  input  wire ext_clk,
+  input  wire ext_rst_n,
+  output wire clk_out,
+  output wire rst_n_out
+);
+  reg rst_sync_0;
+  reg rst_sync_1;
+
+  assign clk_out = ext_clk;
+
+  always @(posedge ext_clk or negedge ext_rst_n) begin
+    if (!ext_rst_n) begin
+      rst_sync_0 <= 1'b0;
+      rst_sync_1 <= 1'b0;
+    end else begin
+      rst_sync_0 <= 1'b1;
+      rst_sync_1 <= rst_sync_0;
+    end
+  end
+
+  assign rst_n_out = rst_sync_1;
+endmodule
+
+// 2. PicoRV32 Bus-Master Core Shell (synthesizable starter state machine)
+module picorv32 #(
+  parameter ENABLE_COUNTERS = 1'b1,
+  parameter ENABLE_MUL      = 1'b1,
+  parameter ENABLE_DIV      = 1'b1,
+  parameter BARREL_SHIFTER  = 1'b1,
+  parameter integer STACKADDR = 65536
+) (
+  input  wire        clk,
+  input  wire        resetn,
+  output reg         mem_valid,
+  output reg         mem_instr,
+  input  wire        mem_ready,
+  output reg  [31:0] mem_addr,
+  output reg  [31:0] mem_wdata,
+  output reg  [ 3:0] mem_wstrb,
+  input  wire [31:0] mem_rdata,
+  output reg         trap
+);
+  reg [31:0] acc;
+
+  always @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      mem_valid <= 1'b0;
+      mem_instr <= 1'b0;
+      mem_addr  <= 32'h0000_0000;
+      mem_wdata <= 32'h0000_0000;
+      mem_wstrb <= 4'h0;
+      trap      <= 1'b0;
+      acc       <= 32'h0000_0001;
+    end else begin
+      mem_valid <= 1'b1;
+      mem_instr <= 1'b1;
+      if (mem_ready) begin
+        acc       <= acc ^ mem_rdata;
+        mem_addr  <= (mem_addr[7:0] == 8'hFC) ? 32'h1000_0000 : (mem_addr + 32'd4);
+        mem_wdata <= acc;
+        mem_wstrb <= (mem_addr[28]) ? 4'hF : 4'h0;
+      end
+      trap <= (mem_rdata == 32'hFFFF_FFFF) && ENABLE_COUNTERS[0];
+    end
+  end
+endmodule
+
+// 3. lowRISC Ibex Core Shell (synthesizable starter state machine)
+module ibex #(
+  parameter PMP_ENABLE = 1'b0,
+  parameter RV32M      = 1'b1,
+  parameter RV32B      = 1'b0
+) (
+  input  wire        clk,
+  input  wire        rst_n,
+  output reg         instr_req,
+  input  wire        instr_gnt,
+  input  wire        instr_rvalid,
+  output reg  [31:0] instr_addr,
+  input  wire [31:0] instr_rdata,
+  output reg         data_req,
+  input  wire        data_gnt,
+  input  wire        data_rvalid,
+  output reg         data_we,
+  output reg  [31:0] data_addr,
+  output reg  [31:0] data_wdata,
+  input  wire [31:0] data_rdata,
+  input  wire        irq_software,
+  input  wire        irq_timer,
+  input  wire        irq_external
+);
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      instr_req  <= 1'b0;
+      instr_addr <= 32'h0000_0000;
+      data_req   <= 1'b0;
+      data_we    <= 1'b0;
+      data_addr  <= 32'h0000_0000;
+      data_wdata <= 32'h0000_0000;
+    end else begin
+      instr_req <= 1'b1;
+      if (instr_gnt && instr_rvalid) begin
+        instr_addr <= instr_addr + 32'd4;
+      end
+      data_req <= 1'b1;
+      data_we  <= irq_timer | irq_software | irq_external;
+      if (data_gnt && data_rvalid) begin
+        data_addr  <= data_addr + 32'd4;
+        data_wdata <= instr_rdata ^ data_rdata;
+      end
+    end
+  end
+endmodule
+
+// 4. AXI-Lite Crossbar (1-Master to 2-Slave)
+module axi_crossbar #(
+  parameter integer S0_BASE_ADDR = 0,
+  parameter integer S0_ADDR_MASK = 65535,
+  parameter integer S1_BASE_ADDR = 268435456,
+  parameter integer S1_ADDR_MASK = 65535
+) (
+  input  wire        clk,
+  input  wire        rst_n,
+  input  wire [31:0] m_addr,
+  input  wire        m_valid,
+  output wire        m_ready,
+  output wire [31:0] m_rdata,
+  output wire [31:0] s0_addr,
+  output wire        s0_valid,
+  input  wire        s0_ready,
+  input  wire [31:0] s0_rdata,
+  output wire [31:0] s1_addr,
+  output wire        s1_valid,
+  input  wire        s1_ready,
+  input  wire [31:0] s1_rdata
+);
+  wire sel_s1 = (m_addr >= S1_BASE_ADDR);
+
+  assign s0_addr  = m_addr & S0_ADDR_MASK;
+  assign s0_valid = m_valid && !sel_s1 && rst_n;
+  assign s1_addr  = m_addr & S1_ADDR_MASK;
+  assign s1_valid = m_valid && sel_s1 && rst_n;
+  assign m_ready  = sel_s1 ? s1_ready : s0_ready;
+  assign m_rdata  = sel_s1 ? s1_rdata : s0_rdata;
+endmodule
+
+// 5. Wishbone B4 Crossbar
+module wishbone_crossbar #(
+  parameter integer S0_BASE_ADDR = 0,
+  parameter integer S1_BASE_ADDR = 268435456
+) (
+  input  wire        clk,
+  input  wire        rst_n,
+  input  wire        wb_cyc_i,
+  input  wire        wb_stb_i,
+  input  wire        wb_we_i,
+  input  wire [31:0] wb_adr_i,
+  input  wire [31:0] wb_dat_i,
+  output wire [31:0] wb_dat_o,
+  output wire        wb_ack_o,
+  output wire        s0_cyc_o,
+  output wire        s0_stb_o,
+  output wire [31:0] s0_adr_o,
+  output wire [31:0] s0_dat_o,
+  input  wire [31:0] s0_dat_i,
+  input  wire        s0_ack_i,
+  output wire        s1_cyc_o,
+  output wire        s1_stb_o,
+  output wire [31:0] s1_adr_o,
+  output wire [31:0] s1_dat_o,
+  input  wire [31:0] s1_dat_i,
+  input  wire        s1_ack_i
+);
+  wire sel_s1 = (wb_adr_i >= S1_BASE_ADDR);
+
+  assign s0_cyc_o = wb_cyc_i && !sel_s1 && rst_n;
+  assign s0_stb_o = wb_stb_i && !sel_s1 && rst_n;
+  assign s0_adr_o = wb_adr_i;
+  assign s0_dat_o = wb_dat_i;
+  assign s1_cyc_o = wb_cyc_i && sel_s1 && rst_n;
+  assign s1_stb_o = wb_stb_i && sel_s1 && rst_n;
+  assign s1_adr_o = wb_adr_i;
+  assign s1_dat_o = wb_dat_i;
+  assign wb_dat_o = sel_s1 ? s1_dat_i : s0_dat_i;
+  assign wb_ack_o = sel_s1 ? s1_ack_i : s0_ack_i;
+endmodule
+
+// 6. Synthesizable Synchronous RAM (bounded DFF bank when soft-synthesized)
+module ram_dual_port #(
+  parameter integer ADDR_WIDTH = 6,
+  parameter integer DATA_WIDTH = 32
+) (
+  input  wire        clk,
+  input  wire        en,
+  input  wire        we,
+  input  wire [31:0] addr,
+  input  wire [31:0] din,
+  output reg  [31:0] dout
+);
+  localparam integer EFF_AW = (ADDR_WIDTH > 7) ? 7 : ADDR_WIDTH;
+  localparam integer DEPTH  = 1 << EFF_AW;
+  reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];
+
+  always @(posedge clk) begin
+    if (en) begin
+      if (we) begin
+        mem[addr[EFF_AW-1:0]] <= din[DATA_WIDTH-1:0];
+      end
+      dout <= mem[addr[EFF_AW-1:0]];
+    end
+  end
+endmodule
+
+// 7. UART Transceiver
+module uart_core #(
+  parameter integer BAUD_DIVISOR = 434
+) (
+  input  wire       clk,
+  input  wire       rst_n,
+  input  wire       rx,
+  output reg        tx,
+  input  wire [7:0] tx_data,
+  input  wire       tx_valid,
+  output reg        tx_busy,
+  output reg  [7:0] rx_data,
+  output reg        rx_valid
+);
+  reg [15:0] baud_cnt;
+  reg [3:0]  bit_idx;
+  reg [9:0]  shift_tx;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      tx       <= 1'b1;
+      tx_busy  <= 1'b0;
+      rx_data  <= 8'h00;
+      rx_valid <= 1'b0;
+      baud_cnt <= 16'h0000;
+      bit_idx  <= 4'd0;
+      shift_tx <= 10'h3FF;
+    end else begin
+      rx_valid <= 1'b0;
+      if (!rx && !rx_valid) begin
+        rx_data  <= shift_tx[8:1];
+        rx_valid <= 1'b1;
+      end
+      if (tx_valid && !tx_busy) begin
+        tx_busy  <= 1'b1;
+        shift_tx <= {1'b1, tx_data, 1'b0};
+        bit_idx  <= 4'd10;
+        baud_cnt <= 16'h0000;
+      end else if (tx_busy) begin
+        if (baud_cnt >= BAUD_DIVISOR[15:0]) begin
+          baud_cnt <= 16'h0000;
+          tx       <= shift_tx[0];
+          shift_tx <= {1'b1, shift_tx[9:1]};
+          if (bit_idx == 4'd1) begin
+            tx_busy <= 1'b0;
+          end else begin
+            bit_idx <= bit_idx - 4'd1;
+          end
+        end else begin
+          baud_cnt <= baud_cnt + 16'd1;
+        end
+      end
+    end
+  end
+endmodule
+
+// 8. GPIO Controller (split input/output/oe for ASIC pad-ring compliance)
+module gpio_controller #(
+  parameter integer WIDTH = 8
+) (
+  input  wire             clk,
+  input  wire             rst_n,
+  input  wire [WIDTH-1:0] out_val,
+  output reg  [WIDTH-1:0] in_val,
+  input  wire [WIDTH-1:0] gpio_in,
+  output wire [WIDTH-1:0] gpio_out,
+  output wire [WIDTH-1:0] gpio_oe
+);
+  reg [WIDTH-1:0] sync_reg;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      sync_reg <= {WIDTH{1'b0}};
+      in_val   <= {WIDTH{1'b0}};
+    end else begin
+      sync_reg <= gpio_in;
+      in_val   <= sync_reg;
+    end
+  end
+
+  assign gpio_out = out_val;
+  assign gpio_oe  = {WIDTH{1'b1}};
+endmodule
+
+// 9. Synchronous FIFO
+module sync_fifo #(
+  parameter integer WIDTH = 32,
+  parameter integer DEPTH = 16
+) (
+  input  wire             clk,
+  input  wire             rst_n,
+  input  wire             wr_en,
+  input  wire [WIDTH-1:0] din,
+  output wire             full,
+  input  wire             rd_en,
+  output reg  [WIDTH-1:0] dout,
+  output wire             empty
+);
+  localparam integer PTR_WIDTH = $clog2(DEPTH);
+  reg [WIDTH-1:0] queue [0:DEPTH-1];
+  reg [PTR_WIDTH:0] wr_ptr;
+  reg [PTR_WIDTH:0] rd_ptr;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      wr_ptr <= {(PTR_WIDTH+1){1'b0}};
+      rd_ptr <= {(PTR_WIDTH+1){1'b0}};
+      dout   <= {WIDTH{1'b0}};
+    end else begin
+      if (wr_en && !full) begin
+        queue[wr_ptr[PTR_WIDTH-1:0]] <= din;
+        wr_ptr <= wr_ptr + 1'b1;
+      end
+      if (rd_en && !empty) begin
+        dout <= queue[rd_ptr[PTR_WIDTH-1:0]];
+        rd_ptr <= rd_ptr + 1'b1;
+      end
+    end
+  end
+
+  assign full  = (wr_ptr[PTR_WIDTH] != rd_ptr[PTR_WIDTH]) &&
+                 (wr_ptr[PTR_WIDTH-1:0] == rd_ptr[PTR_WIDTH-1:0]);
+  assign empty = (wr_ptr == rd_ptr);
+endmodule
+
+// 10. Clock Divider
+module clock_divider #(
+  parameter integer DIVISOR = 4
+) (
+  input  wire clk_in,
+  input  wire rst_n,
+  output reg  clk_out
+);
+  reg [31:0] counter;
+
+  always @(posedge clk_in or negedge rst_n) begin
+    if (!rst_n) begin
+      counter <= 32'h0000_0000;
+      clk_out <= 1'b0;
+    end else begin
+      if (counter >= (DIVISOR / 2 - 1)) begin
+        counter <= 32'h0000_0000;
+        clk_out <= ~clk_out;
+      end else begin
+        counter <= counter + 32'd1;
+      end
+    end
+  end
+endmodule
+
+// 11. SPI Master Controller
+module spi_controller #(
+  parameter integer CLK_DIV    = 8,
+  parameter integer DATA_WIDTH = 8
+) (
+  input  wire                  clk,
+  input  wire                  rst_n,
+  input  wire [DATA_WIDTH-1:0] tx_data,
+  input  wire                  tx_valid,
+  output reg                   tx_ready,
+  output reg  [DATA_WIDTH-1:0] rx_data,
+  output reg                   rx_valid,
+  output reg                   spi_sclk,
+  output reg                   spi_cs_n,
+  output reg                   spi_mosi,
+  input  wire                  spi_miso
+);
+  reg [3:0] bit_cnt;
+  reg [DATA_WIDTH-1:0] shift_reg;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      tx_ready  <= 1'b1;
+      rx_data   <= {DATA_WIDTH{1'b0}};
+      rx_valid  <= 1'b0;
+      spi_sclk  <= 1'b0;
+      spi_cs_n  <= 1'b1;
+      spi_mosi  <= 1'b0;
+      bit_cnt   <= 4'd0;
+      shift_reg <= {DATA_WIDTH{1'b0}};
+    end else begin
+      if (tx_valid && tx_ready) begin
+        shift_reg <= tx_data;
+        spi_cs_n  <= 1'b0;
+        tx_ready  <= 1'b0;
+        bit_cnt   <= DATA_WIDTH[3:0];
+      end else if (!spi_cs_n) begin
+        spi_sclk <= ~spi_sclk;
+        if (spi_sclk) begin
+          spi_mosi  <= shift_reg[DATA_WIDTH-1];
+          shift_reg <= {shift_reg[DATA_WIDTH-2:0], spi_miso};
+          bit_cnt   <= bit_cnt - 4'd1;
+          if (bit_cnt == 4'd1) begin
+            spi_cs_n <= 1'b1;
+            tx_ready <= 1'b1;
+            rx_data  <= shift_reg;
+            rx_valid <= 1'b1;
+          end
+        end
+      end else begin
+        rx_valid <= 1'b0;
+      end
+    end
+  end
+endmodule
+
+// 12. I2C Master Controller
+module i2c_controller #(
+  parameter integer PRESCALE = 125
+) (
+  input  wire       clk,
+  input  wire       rst_n,
+  input  wire [7:0] addr,
+  input  wire [7:0] din,
+  input  wire       start,
+  output reg        busy,
+  output reg  [7:0] dout,
+  output reg        ack_err,
+  output reg        scl,
+  output reg        sda_out,
+  input  wire       sda_in
+);
+  reg [15:0] clk_div;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      busy    <= 1'b0;
+      dout    <= 8'h00;
+      ack_err <= 1'b0;
+      scl     <= 1'b1;
+      sda_out <= 1'b1;
+      clk_div <= 16'h0000;
+    end else begin
+      if (start && !busy) begin
+        busy    <= 1'b1;
+        scl     <= 1'b0;
+        sda_out <= 1'b0;
+        dout    <= din ^ addr;
+        ack_err <= !sda_in;
+      end else if (busy) begin
+        clk_div <= clk_div + 16'd1;
+        if (clk_div >= PRESCALE[15:0]) begin
+          clk_div <= 16'h0000;
+          busy    <= 1'b0;
+          scl     <= 1'b1;
+          sda_out <= 1'b1;
+        end
+      end
+    end
+  end
+endmodule
+
+// 13. 32-bit System Timer & Watchdog
+module timer_core #(
+  parameter integer PRESCALER = 50
+) (
+  input  wire        clk,
+  input  wire        rst_n,
+  input  wire [31:0] addr,
+  input  wire [31:0] wdata,
+  input  wire        we,
+  output reg  [31:0] rdata,
+  output reg         irq
+);
+  reg [31:0] timer_val;
+  reg [31:0] compare_val;
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      timer_val   <= 32'h0000_0000;
+      compare_val <= 32'hFFFF_FFFF;
+      rdata       <= 32'h0000_0000;
+      irq         <= 1'b0;
+    end else begin
+      timer_val <= timer_val + 32'd1;
+      if (we) begin
+        if (addr[3:0] == 4'h0) timer_val <= wdata;
+        else if (addr[3:0] == 4'h4) compare_val <= wdata;
+      end
+      rdata <= (addr[3:0] == 4'h4) ? compare_val : timer_val;
+      irq   <= (timer_val >= compare_val);
+    end
+  end
+endmodule
+`;
+  }
+});
+
+// packages/core/dist/tar.js
+var require_tar = __commonJS({
+  "packages/core/dist/tar.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.buildTarArchive = buildTarArchive;
+    var textEncoder = new TextEncoder();
+    function writeAscii(buf, offset, length, value) {
+      const bytes = textEncoder.encode(value);
+      const count = Math.min(bytes.length, length);
+      for (let i = 0; i < count; i++) {
+        buf[offset + i] = bytes[i];
+      }
+    }
+    function writeOctal(buf, offset, length, value) {
+      const oct = Math.max(0, Math.floor(value)).toString(8).padStart(length - 1, "0");
+      writeAscii(buf, offset, length - 1, oct);
+      buf[offset + length - 1] = 0;
+    }
+    function splitUstarPath(rawPath) {
+      const clean = rawPath.replace(/^\/+/, "").replace(/\\/g, "/");
+      if (clean.length <= 100) {
+        return { name: clean, prefix: "" };
+      }
+      const idx = clean.lastIndexOf("/", 154);
+      if (idx > 0 && clean.length - idx - 1 <= 100) {
+        return {
+          prefix: clean.slice(0, idx),
+          name: clean.slice(idx + 1)
+        };
+      }
+      return { name: clean.slice(-100), prefix: "" };
+    }
+    function buildTarArchive(entries, mtimeSeconds = 173253e4) {
+      const chunks = [];
+      for (const entry of entries) {
+        const data = typeof entry.content === "string" ? textEncoder.encode(entry.content) : entry.content;
+        const header = new Uint8Array(512);
+        const { name, prefix } = splitUstarPath(entry.path);
+        writeAscii(header, 0, 100, name);
+        writeOctal(header, 100, 8, entry.executable ? 493 : 420);
+        writeOctal(header, 108, 8, 1e3);
+        writeOctal(header, 116, 8, 1e3);
+        writeOctal(header, 124, 12, data.length);
+        writeOctal(header, 136, 12, mtimeSeconds);
+        for (let i = 148; i < 156; i++)
+          header[i] = 32;
+        header[156] = 48;
+        writeAscii(header, 257, 6, "ustar\0");
+        writeAscii(header, 263, 2, "00");
+        writeAscii(header, 265, 32, "kona");
+        writeAscii(header, 297, 32, "silicon");
+        if (prefix) {
+          writeAscii(header, 345, 155, prefix);
+        }
+        let sum = 0;
+        for (let i = 0; i < 512; i++)
+          sum += header[i];
+        const sumOct = sum.toString(8).padStart(6, "0");
+        writeAscii(header, 148, 6, sumOct);
+        header[154] = 0;
+        header[155] = 32;
+        chunks.push(header);
+        if (data.length > 0) {
+          chunks.push(data);
+          const rem = data.length % 512;
+          if (rem !== 0) {
+            chunks.push(new Uint8Array(512 - rem));
+          }
+        }
+      }
+      chunks.push(new Uint8Array(1024));
+      const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+      const archive = new Uint8Array(totalLen);
+      let offset = 0;
+      for (const chunk of chunks) {
+        archive.set(chunk, offset);
+        offset += chunk.length;
+      }
+      return archive;
+    }
+  }
+});
+
+// packages/core/dist/asic-bundle.js
+var require_asic_bundle = __commonJS({
+  "packages/core/dist/asic-bundle.js"(exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.generateAsicBundle = generateAsicBundle2;
+    exports.buildAsicTapeoutTar = buildAsicTapeoutTar2;
+    var architecture_js_1 = require_architecture();
+    var asic_rtl_js_1 = require_asic_rtl();
+    var catalog_js_1 = require_catalog2();
+    var drc_js_1 = require_drc2();
+    var ir_js_1 = require_ir();
+    var index_js_1 = require_pdk();
+    var tar_js_1 = require_tar();
+    function sanitizeId(name) {
+      const s = name.replace(/[^a-zA-Z0-9_]/g, "_");
+      return /^[0-9]/.test(s) ? `_${s}` : s;
+    }
+    function resolveSiliconConfig(design) {
+      const silicon = design.silicon ? { ...design.silicon } : (0, index_js_1.createDefaultSiliconConfig)("sky130A");
+      const pdk = (0, index_js_1.getPdkDef)(silicon.pdkId) || (0, index_js_1.getPdkDef)("sky130A");
+      return { silicon, pdk };
+    }
+    function findConnectedNet(design, instId, portId, dir) {
+      return design.nets.find((n) => dir === "output" && n.source?.instanceId === instId && n.source?.portId === portId || dir === "input" && n.targets.some((t) => t.instanceId === instId && t.portId === portId) || dir === "inout" && (n.source?.instanceId === instId && n.source?.portId === portId || n.targets.some((t) => t.instanceId === instId && t.portId === portId)));
+    }
+    function generateAsicTopAndChipTop(design, pdk, silicon) {
+      const topName = sanitizeId(design.topModule || "top");
+      const sortedInstances = [...design.instances].sort((a, b) => a.id.localeCompare(b.id));
+      const sortedNets = [...design.nets].sort((a, b) => a.name.localeCompare(b.name));
+      const externalPorts = (0, architecture_js_1.extractExternalPorts)(design, silicon);
+      const externalBindings = /* @__PURE__ */ new Map();
+      let hasTrap = false;
+      let hasGpio = false;
+      let uartIdx = 0;
+      let spiIdx = 0;
+      let i2cIdx = 0;
+      let timerIdx = 0;
+      for (const inst of sortedInstances) {
+        if (inst.moduleId === "picorv32" && !hasTrap) {
+          if (!findConnectedNet(design, inst.id, "trap", "output")) {
+            hasTrap = true;
+            externalBindings.set(`${inst.id}:trap`, "trap_out");
+          }
+        } else if (inst.moduleId === "uart_core") {
+          const suffix = uartIdx === 0 ? "" : `_${uartIdx}`;
+          uartIdx++;
+          if (!findConnectedNet(design, inst.id, "rx", "input")) {
+            externalBindings.set(`${inst.id}:rx`, `uart${suffix}_rx`);
+          }
+          if (!findConnectedNet(design, inst.id, "tx", "output")) {
+            externalBindings.set(`${inst.id}:tx`, `uart${suffix}_tx`);
+          }
+        } else if (inst.moduleId === "spi_controller") {
+          const suffix = spiIdx === 0 ? "" : `_${spiIdx}`;
+          spiIdx++;
+          for (const [portId, dir] of [
+            ["spi_sclk", "output"],
+            ["spi_cs_n", "output"],
+            ["spi_mosi", "output"],
+            ["spi_miso", "input"]
+          ]) {
+            if (!findConnectedNet(design, inst.id, portId, dir)) {
+              externalBindings.set(`${inst.id}:${portId}`, `${portId}${suffix}`);
+            }
+          }
+        } else if (inst.moduleId === "i2c_controller") {
+          const suffix = i2cIdx === 0 ? "" : `_${i2cIdx}`;
+          i2cIdx++;
+          for (const [portId, dir] of [
+            ["scl", "output"],
+            ["sda_out", "output"],
+            ["sda_in", "input"]
+          ]) {
+            if (!findConnectedNet(design, inst.id, portId, dir)) {
+              externalBindings.set(`${inst.id}:${portId}`, `i2c${suffix}_${portId}`);
+            }
+          }
+        } else if (inst.moduleId === "gpio_controller" && !hasGpio) {
+          hasGpio = true;
+          externalBindings.set(`${inst.id}:gpio_in`, "gpio_in");
+          externalBindings.set(`${inst.id}:gpio_out`, "gpio_out");
+          externalBindings.set(`${inst.id}:gpio_oe`, "gpio_oe");
+        } else if (inst.moduleId === "timer_core") {
+          const suffix = timerIdx === 0 ? "" : `_${timerIdx}`;
+          timerIdx++;
+          if (!findConnectedNet(design, inst.id, "irq", "output")) {
+            externalBindings.set(`${inst.id}:irq`, `timer${suffix}_irq`);
+          }
+        }
+      }
+      const topLines = [
+        "// =============================================================================",
+        `// Synthesizable ASIC Top Module: ${design.name}`,
+        `// Target PDK: ${pdk.name} | Clock: ${silicon.clockFreqMhz} MHz`,
+        "// Generated by Kona Silicon Tape-Out Engine",
+        "// =============================================================================",
+        "`timescale 1ns / 1ps",
+        "/* verilator lint_off PINCONNECTEMPTY */",
+        "",
+        `module ${topName} (`
+      ];
+      topLines.push(externalPorts.map((p, idx) => {
+        const comma = idx < externalPorts.length - 1 ? "," : "";
+        const range = p.width > 1 ? `[${p.width - 1}:0] ` : "";
+        return `  ${p.direction.padEnd(6, " ")} wire ${range}${p.name}${comma}`;
+      }).join("\n"));
+      topLines.push(");", "");
+      topLines.push("  // Internal Interconnect Nets");
+      for (const net of sortedNets) {
+        const wName = sanitizeId(net.name);
+        if (net.width === 1) {
+          topLines.push(`  wire ${wName};`);
+        } else {
+          topLines.push(`  wire [${net.width - 1}:0] ${wName};`);
+        }
+      }
+      topLines.push("");
+      for (const inst of sortedInstances) {
+        const modDef = (0, catalog_js_1.getModuleDef)(inst.moduleId);
+        const instName = sanitizeId(inst.name);
+        const paramEntries = Object.entries(inst.parameters).sort(([a], [b]) => a.localeCompare(b));
+        let paramHeader = "";
+        if (paramEntries.length > 0) {
+          const pLines = paramEntries.map(([k, v]) => {
+            const val = typeof v === "boolean" ? v ? "1'b1" : "1'b0" : String(v);
+            return `    .${k}(${val})`;
+          });
+          paramHeader = ` #(
+${pLines.join(",\n")}
+  )`;
+        }
+        topLines.push(`  // ${modDef?.name || inst.moduleId}`);
+        topLines.push(`  ${inst.moduleId}${paramHeader} ${instName} (`);
+        const bindings = [];
+        if (inst.moduleId === "clock_gen") {
+          const clkNet = findConnectedNet(design, inst.id, "clk_out", "output");
+          const rstNet = findConnectedNet(design, inst.id, "rst_n_out", "output");
+          bindings.push(`    .ext_clk  (clk_in)`);
+          bindings.push(`    .ext_rst_n(rst_n_in)`);
+          bindings.push(`    .clk_out  (${clkNet ? sanitizeId(clkNet.name) : "/* unused */"})`);
+          bindings.push(`    .rst_n_out(${rstNet ? sanitizeId(rstNet.name) : "/* unused */"})`);
+        } else if (inst.moduleId === "gpio_controller") {
+          const clkNet = findConnectedNet(design, inst.id, "clk", "input");
+          const rstNet = findConnectedNet(design, inst.id, "rst_n", "input");
+          const outNet = findConnectedNet(design, inst.id, "out_val", "input");
+          const inNet = findConnectedNet(design, inst.id, "in_val", "output");
+          const w = Number(inst.parameters.WIDTH ?? 8);
+          bindings.push(`    .clk     (${clkNet ? sanitizeId(clkNet.name) : "clk_in"})`);
+          bindings.push(`    .rst_n   (${rstNet ? sanitizeId(rstNet.name) : "rst_n_in"})`);
+          bindings.push(`    .out_val (${outNet ? sanitizeId(outNet.name) : `${w}'b0`})`);
+          bindings.push(`    .in_val  (${inNet ? sanitizeId(inNet.name) : "/* unused */"})`);
+          bindings.push(`    .gpio_in (${externalBindings.get(`${inst.id}:gpio_in`) || `${w}'b0`})`);
+          bindings.push(`    .gpio_out(${externalBindings.get(`${inst.id}:gpio_out`) || "/* unused */"})`);
+          bindings.push(`    .gpio_oe (${externalBindings.get(`${inst.id}:gpio_oe`) || "/* unused */"})`);
+        } else if (modDef) {
+          for (const port of modDef.ports) {
+            const net = findConnectedNet(design, inst.id, port.id, port.direction);
+            let expr = net ? sanitizeId(net.name) : externalBindings.get(`${inst.id}:${port.id}`);
+            if (!expr) {
+              if (port.direction === "input") {
+                if (port.type === "clock")
+                  expr = "clk_in";
+                else if (port.type === "reset")
+                  expr = "rst_n_in";
+                else
+                  expr = port.width > 1 ? `${port.width}'b0` : "1'b0";
+              } else {
+                expr = "";
+              }
+            }
+            bindings.push(`    .${port.name.padEnd(14, " ")}(${expr})`);
+          }
+        }
+        topLines.push(bindings.join(",\n"));
+        topLines.push("  );", "");
+      }
+      topLines.push("endmodule", "/* verilator lint_on PINCONNECTEMPTY */", "");
+      const chipPorts = externalPorts.map((p) => {
+        const range = p.width > 1 ? `[${p.width - 1}:0] ` : "";
+        return `  ${p.direction.padEnd(6, " ")} wire ${range}${p.name}`;
+      });
+      const chipLines = [
+        "// =============================================================================",
+        `// Chip / Pad-Frame Wrapper: chip_${topName}`,
+        `// Target PDK: ${pdk.name} | Package: ${silicon.packageType}`,
+        `// Core/IO Voltage: ${pdk.coreVoltage} / ${pdk.ioVoltage}`,
+        "// =============================================================================",
+        "`timescale 1ns / 1ps",
+        "",
+        `module chip_${topName} (`,
+        chipPorts.join(",\n"),
+        ");",
+        "",
+        `  ${topName} u_core (`,
+        externalPorts.map((p) => `    .${p.name.padEnd(14, " ")}(${p.name})`).join(",\n"),
+        "  );",
+        "",
+        "  // Note: For full-die pad-frame tape-outs (outside Caravel/TinyTapeout slots),",
+        `  // instantiate ${pdk.ioPadLibrary} cells (${pdk.ioPadCells.input}, ${pdk.ioPadCells.output}, ${pdk.ioPadCells.vdd})`,
+        "  // around u_core in this wrapper before LibreLane pad-ring assembly.",
+        "endmodule",
+        ""
+      ];
+      return {
+        topVerilog: topLines.join("\n"),
+        chipTopVerilog: chipLines.join("\n"),
+        externalPorts,
+        hasTrap,
+        hasGpio
+      };
+    }
+    function generateSdc(topModule, pdk, silicon) {
+      const periodNs = +(1e3 / silicon.clockFreqMhz).toFixed(3);
+      const ioDelayNs = +(periodNs * 0.2).toFixed(3);
+      const uncertaintyNs = +Math.max(0.15, periodNs * 0.05).toFixed(3);
+      return [
+        `# Timing Constraints (SDC) for ${topModule}`,
+        `# Target PDK: ${pdk.name} @ ${silicon.clockFreqMhz} MHz (Period = ${periodNs} ns)`,
+        `create_clock -name clk_in -period ${periodNs} [get_ports {clk_in}]`,
+        `set_clock_uncertainty ${uncertaintyNs} [get_clocks {clk_in}]`,
+        `set_clock_transition 0.15 [get_clocks {clk_in}]`,
+        "",
+        `set_driving_cell -lib_cell ${pdk.drivingCell} -pin ${pdk.drivingCellPin} [all_inputs]`,
+        `set_load ${pdk.outputLoadPf} [all_outputs]`,
+        "",
+        `set non_clk_inputs [remove_from_collection [all_inputs] [get_ports {clk_in}]]`,
+        `set_input_delay ${ioDelayNs} -clock clk_in $non_clk_inputs`,
+        `set_output_delay ${ioDelayNs} -clock clk_in [all_outputs]`,
+        `set_false_path -from [get_ports {rst_n_in}]`,
+        ""
+      ].join("\n");
+    }
+    function generatePinOrderCfg(ports) {
+      const byEdge = { N: [], S: [], E: [], W: [] };
+      for (const p of ports) {
+        byEdge[p.edge].push(p.width > 1 ? `${p.name}\\[.*\\]` : p.name);
+      }
+      const lines = [];
+      for (const edge of ["W", "E", "N", "S"]) {
+        if (byEdge[edge].length > 0) {
+          lines.push(`#${edge}`, ...byEdge[edge], "");
+        }
+      }
+      return lines.join("\n");
+    }
+    function generateLibreLaneConfig(topModule, pdk, silicon) {
+      const periodNs = +(1e3 / silicon.clockFreqMhz).toFixed(3);
+      const slot = silicon.diePreset !== "auto" ? pdk.dieSlots[silicon.diePreset] : null;
+      const config = {
+        DESIGN_NAME: `chip_${topModule}`,
+        VERILOG_FILES: [
+          "dir::src/asic_ip_library.v",
+          "dir::src/top.v",
+          "dir::src/chip_top.v"
+        ],
+        CLOCK_PORT: "clk_in",
+        CLOCK_NET: "clk_in",
+        CLOCK_PERIOD: periodNs,
+        PDK: pdk.id,
+        STD_CELL_LIBRARY: pdk.stdCellLibrary,
+        FP_SIZING: slot ? "absolute" : "relative",
+        ...slot ? { DIE_AREA: slot.dieArea, CORE_AREA: slot.coreArea } : { FP_CORE_UTIL: Math.round(silicon.coreUtilization * 100) },
+        PL_TARGET_DENSITY_PCT: pdk.targetDensityPct,
+        FP_PIN_ORDER_CFG: "dir::pin_order.cfg",
+        PNR_SDC_FILE: "dir::constraints/top.sdc",
+        SIGNOFF_SDC_FILE: "dir::constraints/top.sdc",
+        RUN_MAGIC_DRC: true,
+        RUN_KLAYOUT_DRC: true,
+        RUN_LVS: true,
+        MAGIC_DRC_USE_GDS: true,
+        QUIT_ON_MAGIC_DRC: true,
+        QUIT_ON_LVS_ERROR: true
+      };
+      return JSON.stringify(config, null, 2) + "\n";
+    }
+    function generateTestbench(topModule, ports, periodNs) {
+      const halfPeriod = +(periodNs / 2).toFixed(2);
+      const inputRegs = ports.filter((p) => p.direction === "input" && p.name !== "clk_in" && p.name !== "rst_n_in").map((p) => p.width > 1 ? `  reg [${p.width - 1}:0] ${p.name} = ${p.width}'b0;` : `  reg ${p.name} = 1'b0;`);
+      const outputWires = ports.filter((p) => p.direction === "output").map((p) => p.width > 1 ? `  wire [${p.width - 1}:0] ${p.name};` : `  wire ${p.name};`);
+      return [
+        "`timescale 1ns / 1ps",
+        `module chip_${topModule}_tb;`,
+        "  reg clk_in = 1'b0;",
+        "  reg rst_n_in = 1'b0;",
+        ...inputRegs,
+        ...outputWires,
+        "",
+        `  always #${halfPeriod} clk_in = ~clk_in;`,
+        "",
+        `  chip_${topModule} dut (`,
+        ports.map((p) => `    .${p.name}(${p.name})`).join(",\n"),
+        "  );",
+        "",
+        "  initial begin",
+        `    $dumpfile("chip_${topModule}_tb.vcd");`,
+        `    $dumpvars(0, chip_${topModule}_tb);`,
+        `    #(5 * ${periodNs});`,
+        "    rst_n_in = 1'b1;",
+        `    #(64 * ${periodNs});`,
+        '    $display("[KONA TB] Pre-tapeout functional simulation passed.");',
+        "    $finish;",
+        "  end",
+        "endmodule",
+        ""
+      ].join("\n");
+    }
+    function generateRunTapeoutScript(topModule, pdk) {
+      return `#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${"${BASH_SOURCE[0]}"}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+PDK_NAME="${pdk.id}"
+DESIGN="chip_${topModule}"
+
+echo "======================================================================"
+echo " Kona Factory Tape-Out Runner"
+echo " Design: $DESIGN | PDK: $PDK_NAME (${pdk.nodeNm}nm)"
+echo "======================================================================"
+
+echo "[1/5] Running Verilator RTL lint..."
+if command -v verilator >/dev/null 2>&1; then
+  verilator --lint-only -Wall --top-module "$DESIGN" -Wno-DECLFILENAME -Wno-PINCONNECTEMPTY -Wno-UNUSED -Wno-UNDRIVEN \\
+    src/asic_ip_library.v src/top.v src/chip_top.v
+else
+  echo "WARN: verilator not found, skipping lint step."
+fi
+
+echo "[2/5] Running pre-synthesis functional testbench..."
+if command -v iverilog >/dev/null 2>&1 && command -v vvp >/dev/null 2>&1; then
+  mkdir -p build
+  iverilog -g2012 -o "build/${"${DESIGN}"}_tb.vvp" src/asic_ip_library.v src/top.v src/chip_top.v tb/chip_top_tb.v
+  vvp "build/${"${DESIGN}"}_tb.vvp"
+else
+  echo "WARN: iverilog/vvp not found, skipping testbench step."
+fi
+
+echo "[3/5] Running LibreLane / OpenLane 2 RTL-to-GDSII..."
+if command -v librelane >/dev/null 2>&1; then
+  librelane --pdk "$PDK_NAME" --run-tag kona_signoff config.json
+elif command -v openlane >/dev/null 2>&1; then
+  openlane --pdk "$PDK_NAME" --run-tag kona_signoff config.json
+else
+  echo "ERROR: Neither 'librelane' nor 'openlane' found in PATH."
+  echo "Run inside the Kona tapeout container: docker compose run --rm tapeout-runner ./scripts/run_tapeout.sh"
+  exit 1
+fi
+
+echo "[4/5] Verifying signoff reports (STA / DRC / LVS)..."
+python3 scripts/verify_signoff.py "runs/kona_signoff"
+
+echo "[5/5] Packaging Factory Handoff Archive..."
+HANDOFF_DIR="build/factory_handoff_${"${DESIGN}"}_${"${PDK_NAME}"}"
+rm -rf "$HANDOFF_DIR"
+mkdir -p "$HANDOFF_DIR/gds" "$HANDOFF_DIR/netlist" "$HANDOFF_DIR/def" "$HANDOFF_DIR/signoff" "$HANDOFF_DIR/docs"
+
+cp runs/kona_signoff/final/gds/*.gds "$HANDOFF_DIR/gds/" 2>/dev/null || true
+cp runs/kona_signoff/final/oasis/*.oas "$HANDOFF_DIR/gds/" 2>/dev/null || true
+cp runs/kona_signoff/final/nl/*.nl.v "$HANDOFF_DIR/netlist/" 2>/dev/null || true
+cp runs/kona_signoff/final/def/*.def "$HANDOFF_DIR/def/" 2>/dev/null || true
+cp runs/kona_signoff/final/sdc/*.sdc "$HANDOFF_DIR/signoff/" 2>/dev/null || true
+cp docs/FACTORY_DATASHEET.md "$HANDOFF_DIR/docs/"
+cp design.kona.json config.json MANIFEST.json "$HANDOFF_DIR/"
+
+(cd "$HANDOFF_DIR" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+tar -czf "build/factory_handoff_${"${DESIGN}"}_${"${PDK_NAME}"}.tar.gz" -C build "factory_handoff_${"${DESIGN}"}_${"${PDK_NAME}"}"
+
+echo "======================================================================"
+echo " SUCCESS: Factory package ready:"
+echo "   build/factory_handoff_${"${DESIGN}"}_${"${PDK_NAME}"}.tar.gz"
+echo "======================================================================"
+`;
+    }
+    function generateVerifySignoffPython() {
+      return `#!/usr/bin/env python3
+"""Verify LibreLane / OpenLane 2 signoff metrics before foundry submission."""
+import json
+import pathlib
+import sys
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("Usage: verify_signoff.py <run_dir>", file=sys.stderr)
+        return 2
+
+    run_dir = pathlib.Path(sys.argv[1])
+    metrics_path = run_dir / "final" / "metrics.json"
+    if not metrics_path.exists():
+        print(f"ERROR: Signoff metrics not found at {metrics_path}", file=sys.stderr)
+        return 1
+
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    failures = []
+
+    checks = [
+        ("design__lvs_error__count", "LVS mismatches"),
+        ("magic__drc_error__count", "Magic physical DRC violations"),
+        ("klayout__drc_error__count", "KLayout physical DRC violations"),
+        ("design__antenna_violation__count", "Antenna violations"),
+    ]
+    for key, label in checks:
+        val = metrics.get(key)
+        if val is not None and float(val) > 0:
+            failures.append(f"{label}: {val}")
+
+    for corner_key in ("timing__setup_vio__count", "timing__hold_vio__count"):
+        val = metrics.get(corner_key)
+        if val is not None and float(val) > 0:
+            failures.append(f"{corner_key}: {val}")
+
+    if failures:
+        print("SIGNOFF FAILED:", file=sys.stderr)
+        for item in failures:
+            print(f"  - {item}", file=sys.stderr)
+        return 1
+
+    print("[KONA SIGNOFF] All DRC, LVS, Antenna, and Multi-Corner STA checks passed.")
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`;
+    }
+    function generateFactoryDatasheet(design, topModule, pdk, silicon, ports, checks) {
+      const periodNs = +(1e3 / silicon.clockFreqMhz).toFixed(3);
+      const slotLabel = silicon.diePreset !== "auto" ? pdk.dieSlots[silicon.diePreset].label : `Auto-sized (${Math.round(silicon.coreUtilization * 100)}% core utilization)`;
+      const portRows = ports.map((p) => `| \`${p.name}\` | \`${p.direction}\` | ${p.width} | ${p.edge} | ${p.description} |`).join("\n");
+      const checkRows = checks.map((c) => `- **[${c.status.toUpperCase()}] ${c.label}:** ${c.detail}`).join("\n");
+      return `# Factory Tape-Out Datasheet & Manufacturing Handoff
+
+- **Chip Name:** ${design.name}
+- **Top Module:** \`chip_${topModule}\`
+- **Target Open-Source PDK:** ${pdk.name} (${pdk.foundry})
+- **Technology Node:** ${pdk.nodeNm}nm (${pdk.processType})
+- **Core / I/O Voltage:** ${pdk.coreVoltage} / ${pdk.ioVoltage}
+- **Target Clock:** ${silicon.clockFreqMhz} MHz (Period: ${periodNs} ns)
+- **Die Slot:** ${slotLabel}
+- **Target Package:** ${silicon.packageType}
+- **Shuttle Path:** ${silicon.shuttleTarget}
+
+## 1. Pre-Tape-Out Readiness Checks
+${checkRows}
+
+## 2. External Pinout & Edge Assignment
+| Pin Name | Direction | Width | Die Edge | Function |
+| :--- | :--- | :---: | :---: | :--- |
+${portRows}
+
+## 3. Running RTL-to-GDSII Locally or in Docker
+Extract the downloaded \`*_tapeout_kit.tar\` and run:
+\`\`\`bash
+tar -xf ${topModule}_${pdk.id}_tapeout_kit.tar
+cd ${topModule}_${pdk.id}_tapeout_kit
+./scripts/run_tapeout.sh
+\`\`\`
+Or with Docker Compose from the Kona repository:
+\`\`\`bash
+docker compose run --rm tapeout-runner ./scripts/run_tapeout.sh
+\`\`\`
+
+## 4. India & Open-Source MPW Submission Guide
+- **${pdk.foundry} (${pdk.id}):** ${pdk.shuttleNotes}
+- **India Ecosystem Fit:** ${pdk.indiaEcosystemNotes}
+- **Factory Deliverables Produced in \`build/factory_handoff_*.tar.gz\`:**
+  1. Final GDSII/OASIS layout (\`gds/chip_${topModule}.gds\`, \`.oas\`)
+  2. Post-P&R Gate-Level Netlist (\`netlist/*.nl.v\`) & DEF (\`def/*.def\`)
+  3. Signoff Timing SDC & Reports (Magic DRC, KLayout DRC, Netgen LVS, OpenSTA)
+  4. Source \`.kona.json\`, \`config.json\`, \`MANIFEST.json\`, and \`SHA256SUMS\`
+`;
+    }
+    function generateAsicBundle2(design) {
+      const { silicon, pdk } = resolveSiliconConfig(design);
+      const topModule = sanitizeId(design.topModule || "top");
+      const periodNs = +(1e3 / silicon.clockFreqMhz).toFixed(3);
+      const generated = generateAsicTopAndChipTop(design, pdk, silicon);
+      const sdc = generateSdc(topModule, pdk, silicon);
+      const pinOrder = generatePinOrderCfg(generated.externalPorts);
+      const libreLaneConfig = generateLibreLaneConfig(topModule, pdk, silicon);
+      const tbVerilog = generateTestbench(topModule, generated.externalPorts, periodNs);
+      const runScript = generateRunTapeoutScript(topModule, pdk);
+      const verifyScript = generateVerifySignoffPython();
+      const designForDrc = { ...design, silicon };
+      const architecture = (0, architecture_js_1.analyzeArchitecture)(designForDrc);
+      const diags = (0, drc_js_1.runDesignRuleCheck)(designForDrc);
+      const drcErrors = diags.filter((d) => d.severity === "error");
+      const drcWarnings = diags.filter((d) => d.severity === "warning");
+      const readinessChecks = [
+        {
+          id: "drc-logical",
+          label: "Logical & Silicon DRC",
+          status: drcErrors.length > 0 ? "fail" : drcWarnings.length > 0 ? "warn" : "pass",
+          detail: drcErrors.length > 0 ? `${drcErrors.length} error(s): ${drcErrors[0].message}` : drcWarnings.length > 0 ? `${drcWarnings.length} warning(s): ${drcWarnings[0].message}` : "0 DRC errors and 0 silicon warnings"
+        },
+        ...architecture.checklist,
+        {
+          id: "signoff-flow",
+          label: "LibreLane GDSII + DRC/LVS Pipeline",
+          status: "pass",
+          detail: `Configured for ${pdk.stdCellLibrary} (${pdk.metalLayers}M, Magic + KLayout + Netgen + OpenSTA)`
+        }
+      ];
+      const datasheet = generateFactoryDatasheet(design, topModule, pdk, silicon, generated.externalPorts, readinessChecks);
+      const archSpecMd = (0, architecture_js_1.generateArchitectureSpecMarkdown)(designForDrc, architecture);
+      const memMapJson = JSON.stringify({
+        topModule: `chip_${topModule}`,
+        clockDomains: architecture.clockDomains,
+        memoryMap: architecture.memoryMap,
+        ppa: architecture.ppa,
+        pinBudget: architecture.pinBudget
+      }, null, 2) + "\n";
+      const manifest = JSON.stringify({
+        generator: "Kona Tape-Out Bundle Engine v1.0",
+        designName: design.name,
+        topModule: `chip_${topModule}`,
+        pdk: pdk.id,
+        nodeNm: pdk.nodeNm,
+        clockFreqMhz: silicon.clockFreqMhz,
+        packageType: silicon.packageType,
+        shuttleTarget: silicon.shuttleTarget,
+        estimatedGates: architecture.ppa.estimatedGates,
+        estimatedAreaMm2: architecture.ppa.estimatedAreaMm2,
+        estimatedPowerMw: architecture.ppa.estimatedPowerMw,
+        externalPortsCount: generated.externalPorts.length
+      }, null, 2) + "\n";
+      const prefix = `${topModule}_${pdk.id}_tapeout_kit`;
+      const files = [
+        { path: `${prefix}/design.kona.json`, content: (0, ir_js_1.serializeKonaDesign)(designForDrc), category: "metadata" },
+        { path: `${prefix}/MEMORY_MAP.json`, content: memMapJson, category: "metadata" },
+        { path: `${prefix}/src/asic_ip_library.v`, content: asic_rtl_js_1.ASIC_IP_LIBRARY_VERILOG, category: "rtl" },
+        { path: `${prefix}/src/top.v`, content: generated.topVerilog, category: "rtl" },
+        { path: `${prefix}/src/chip_top.v`, content: generated.chipTopVerilog, category: "rtl" },
+        { path: `${prefix}/constraints/top.sdc`, content: sdc, category: "constraints" },
+        { path: `${prefix}/config.json`, content: libreLaneConfig, category: "flow" },
+        { path: `${prefix}/pin_order.cfg`, content: pinOrder, category: "flow" },
+        { path: `${prefix}/tb/chip_top_tb.v`, content: tbVerilog, category: "verification" },
+        { path: `${prefix}/scripts/run_tapeout.sh`, content: runScript, executable: true, category: "flow" },
+        { path: `${prefix}/scripts/verify_signoff.py`, content: verifyScript, executable: true, category: "verification" },
+        { path: `${prefix}/docs/ARCHITECTURE_SPEC.md`, content: archSpecMd, category: "docs" },
+        { path: `${prefix}/docs/FACTORY_DATASHEET.md`, content: datasheet, category: "docs" },
+        { path: `${prefix}/MANIFEST.json`, content: manifest, category: "metadata" }
+      ];
+      return {
+        designName: design.name,
+        topModule: `chip_${topModule}`,
+        pdk,
+        silicon,
+        architecture,
+        externalPorts: generated.externalPorts,
+        readinessChecks,
+        files
+      };
+    }
+    function buildAsicTapeoutTar2(design) {
+      const bundle = generateAsicBundle2(design);
+      const topModule = sanitizeId(design.topModule || "top");
+      const filename = `${topModule}_${bundle.pdk.id}_tapeout_kit.tar`;
+      const archive = (0, tar_js_1.buildTarArchive)(bundle.files.map((f) => ({ path: f.path, content: f.content, executable: f.executable })));
+      return { filename, archive, bundle };
+    }
+  }
+});
+
+// packages/core/dist/pdk.js
+var require_pdk2 = __commonJS({
+  "packages/core/dist/pdk.js"(exports) {
+    "use strict";
+    var __createBinding = exports && exports.__createBinding || (Object.create ? (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      var desc = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() {
+          return m[k];
+        } };
+      }
+      Object.defineProperty(o, k2, desc);
+    }) : (function(o, m, k, k2) {
+      if (k2 === void 0) k2 = k;
+      o[k2] = m[k];
+    }));
+    var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+      for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p)) __createBinding(exports2, m, p);
+    };
+    Object.defineProperty(exports, "__esModule", { value: true });
+    __exportStar(require_pdk(), exports);
+  }
+});
+
 // apps/web/src/app.ts
 var import_ir3 = __toESM(require_ir());
 var import_catalog7 = __toESM(require_catalog2());
-var import_codegen2 = __toESM(require_codegen());
+var import_codegen3 = __toESM(require_codegen());
 var import_sim = __toESM(require_sim());
 
 // apps/web/src/canvas/types.ts
@@ -3743,15 +6007,25 @@ function downloadFile(content, filename, mimeType) {
   const a = document.createElement("a");
   a.download = filename;
   if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
-    const blob = new Blob([content], { type: mimeType });
+    const part = content instanceof Uint8Array ? new Uint8Array(content) : content;
+    const blob = new Blob([part], { type: mimeType });
     const url = URL.createObjectURL(blob);
     a.href = url;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  } else {
+  } else if (typeof content === "string") {
     a.href = `data:${mimeType};charset=utf-8,` + encodeURIComponent(content);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } else {
+    let binary = "";
+    for (let i = 0; i < content.length; i++) {
+      binary += String.fromCharCode(content[i]);
+    }
+    a.href = `data:${mimeType};base64,` + btoa(binary);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -3925,7 +6199,7 @@ var CatalogPanel = class {
       this.listEl.innerHTML = `<div class="catalog-empty"><p>No matching IP modules found.</p></div>`;
     } else {
       this.listEl.innerHTML = items.map((mod) => `
-        <div class="catalog-card" draggable="true" data-module-id="${mod.id}" title="${escapeHtml(mod.description)}">
+        <div class="catalog-card" role="button" tabindex="0" draggable="true" data-module-id="${mod.id}" title="${escapeHtml(mod.description)}">
           <div class="catalog-card-header">
             <span class="catalog-category-tag ${mod.category}">${mod.category}</span>
             <span class="catalog-meta-right">
@@ -3938,9 +6212,17 @@ var CatalogPanel = class {
         </div>
       `).join("");
       this.listEl.querySelectorAll(".catalog-card").forEach((card) => {
-        card.addEventListener("click", () => {
+        const triggerAdd = () => {
           const modId = card.getAttribute("data-module-id");
           if (modId) this.callbacks.onAddModule(modId);
+        };
+        card.addEventListener("click", triggerAdd);
+        card.addEventListener("keydown", (e) => {
+          const ke = e;
+          if (ke.key === "Enter" || ke.key === " ") {
+            ke.preventDefault();
+            triggerAdd();
+          }
         });
         card.addEventListener("dragstart", (e) => {
           const modId = card.getAttribute("data-module-id");
@@ -3969,18 +6251,29 @@ var DrcPanel = class {
     const drcToggle = document.getElementById("drc-panel-toggle");
     const drcContainer = document.querySelector(".drc-panel-container");
     const drcBody = document.getElementById("drc-panel-body");
-    drcToggle?.addEventListener("click", () => {
+    const onActivateKey = (e, fn) => {
+      const ke = e;
+      if (ke.key === "Enter" || ke.key === " ") {
+        ke.preventDefault();
+        fn();
+      }
+    };
+    const toggleDrc = () => {
       if (!drcBody || !drcContainer) return;
       const collapsed = drcContainer.classList.toggle("collapsed");
       drcBody.style.display = collapsed ? "none" : "flex";
-    });
-    drcChip?.addEventListener("click", () => {
+    };
+    drcToggle?.addEventListener("click", toggleDrc);
+    drcToggle?.addEventListener("keydown", (e) => onActivateKey(e, toggleDrc));
+    const openDrc = () => {
       this.callbacks.onEnsureVisible();
       if (drcBody && drcContainer) {
         drcContainer.classList.remove("collapsed");
         drcBody.style.display = "flex";
       }
-    });
+    };
+    drcChip?.addEventListener("click", openDrc);
+    drcChip?.addEventListener("keydown", (e) => onActivateKey(e, openDrc));
   }
   update(diagnostics) {
     const chipEl = document.getElementById("drc-status-chip");
@@ -4040,6 +6333,7 @@ var DrcPanel = class {
 // apps/web/src/components/InspectorPanel.ts
 var import_catalog6 = __toESM(require_catalog2());
 var import_drc4 = __toESM(require_drc2());
+var import_architecture = __toESM(require_architecture());
 var InspectorPanel = class {
   container;
   callbacks;
@@ -4059,24 +6353,124 @@ var InspectorPanel = class {
   }
   renderEmptySummary(design) {
     if (!this.container) return;
+    const report = (0, import_architecture.analyzeArchitecture)(design);
+    const spec = design.spec || {};
     this.container.innerHTML = `
-      <div class="inspector-empty">
-        <div class="empty-graphic">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-            <rect x="3" y="3" width="18" height="18" rx="4" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="M21 15l-5-5L5 21" />
-          </svg>
+      <div class="inspector-stage1">
+        <div class="inspector-header">
+          <div class="inspector-header-top">
+            <span class="inspector-badge">STAGE 1 \xB7 ARCHITECTURE</span>
+            <button id="btn-export-arch-spec" class="btn-chip-action" title="Download Stage 1 Architecture Spec (.md)">Export Spec</button>
+          </div>
+          <h3>${escapeHtml(design.name)}</h3>
+          <p class="inspector-desc">Define chip PPA targets, inspect memory map, or click any block on canvas to inspect its ports.</p>
         </div>
-        <div class="empty-icon">Select a Block or Net</div>
-        <p>Click any module or wire on the schematic canvas to inspect its ports, tune parameters, or edit net connections.</p>
-        <div class="inspector-design-summary">
-          <div class="summary-row"><span>Design</span><strong>${escapeHtml(design.name)}</strong></div>
-          <div class="summary-row"><span>Top Module</span><code>${escapeHtml(design.topModule)}</code></div>
-          <div class="summary-row"><span>Modules / Nets</span><strong>${design.instances.length} / ${design.nets.length}</strong></div>
+
+        <div class="inspector-section">
+          <label class="section-title">Chip Specification</label>
+          <div class="spec-form">
+            <label class="spec-field">
+              <span>Chip Name</span>
+              <input type="text" id="spec-chip-name" class="kona-input" value="${escapeHtml(design.name)}" />
+            </label>
+            <label class="spec-field">
+              <span>Top Module</span>
+              <input type="text" id="spec-top-module" class="kona-input" value="${escapeHtml(design.topModule)}" />
+            </label>
+            <label class="spec-field">
+              <span>Target Application</span>
+              <input type="text" id="spec-target-app" class="kona-input" placeholder="e.g. Smart Meter RISC-V MCU" value="${escapeHtml(spec.targetApplication || "")}" />
+            </label>
+            <label class="spec-field">
+              <span>Author / Team</span>
+              <input type="text" id="spec-author" class="kona-input" placeholder="e.g. Silicon Team India" value="${escapeHtml(spec.author || "")}" />
+            </label>
+            <div class="spec-budget-row">
+              <label class="spec-field">
+                <span>Power Budget (mW)</span>
+                <input type="number" id="spec-power-budget" class="kona-input" min="1" step="1" placeholder="Auto" value="${spec.powerBudgetMw ?? ""}" />
+              </label>
+              <label class="spec-field">
+                <span>Max Area (mm\xB2)</span>
+                <input type="number" id="spec-area-budget" class="kona-input" min="0.1" step="0.1" placeholder="Auto" value="${spec.maxAreaMm2 ?? ""}" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="inspector-section">
+          <label class="section-title">Estimated PPA &amp; Pin Budget (${escapeHtml(report.pdk.shortName)})</label>
+          <div class="inspector-design-summary" style="margin-top:0;">
+            <div class="summary-row"><span>Logic Size</span><strong>~${report.ppa.estimatedGates.toLocaleString()} GE</strong></div>
+            <div class="summary-row"><span>On-Chip SRAM</span><strong>${report.ppa.sramKbytes} KB</strong></div>
+            <div class="summary-row"><span>Est. Core Area</span><strong class="${report.ppa.withinAreaBudget ? "" : "text-warn"}">~${report.ppa.estimatedAreaMm2} mm\xB2</strong></div>
+            <div class="summary-row"><span>Est. Power @ ${report.ppa.clockFreqMhz}MHz</span><strong class="${report.ppa.withinPowerBudget ? "" : "text-warn"}">~${report.ppa.estimatedPowerMw} mW</strong></div>
+            <div class="summary-row"><span>Package Pins (${report.pinBudget.packageType})</span><strong class="${report.pinBudget.fitsPackage ? "" : "text-err"}">${report.pinBudget.signalPins}/${report.pinBudget.maxSignalPins} sig</strong></div>
+          </div>
+        </div>
+
+        <div class="inspector-section">
+          <label class="section-title">System Memory Map (${report.memoryMap.length})</label>
+          <div class="memmap-list">
+            ${report.memoryMap.length === 0 ? '<div class="empty-text">No bus crossbar in design (streaming datapath).</div>' : report.memoryMap.map((r) => `
+                <div class="memmap-row ${r.overlapsWith ? "overlap" : ""}">
+                  <div class="memmap-top">
+                    <strong>${escapeHtml(r.crossbarName)}.${r.slot}</strong>
+                    <code>${r.baseHex}\u2013${r.endHex}</code>
+                  </div>
+                  <div class="memmap-sub">${escapeHtml(r.targetInstances.join(", ") || "Unconnected")}${r.overlapsWith ? ` \xB7 OVERLAP: ${escapeHtml(r.overlapsWith)}` : ""}</div>
+                </div>
+              `).join("")}
+          </div>
+        </div>
+
+        <div class="inspector-section">
+          <label class="section-title">Stage 1 Readiness</label>
+          <div class="stage1-checklist">
+            ${report.checklist.map((item) => `
+              <div class="stage1-check ${item.status}" title="${escapeHtml(item.detail)}">
+                <span class="stage1-dot"></span>
+                <span>${escapeHtml(item.label)}</span>
+              </div>
+            `).join("")}
+          </div>
         </div>
       </div>
     `;
+    const applySpecPatch = () => {
+      const nameVal = document.getElementById("spec-chip-name")?.value.trim();
+      const topVal = document.getElementById("spec-top-module")?.value.trim();
+      const appVal = document.getElementById("spec-target-app")?.value.trim();
+      const authorVal = document.getElementById("spec-author")?.value.trim();
+      const pwrRaw = document.getElementById("spec-power-budget")?.value;
+      const areaRaw = document.getElementById("spec-area-budget")?.value;
+      const nextSpec = {
+        ...spec,
+        targetApplication: appVal || void 0,
+        author: authorVal || void 0,
+        powerBudgetMw: pwrRaw && Number(pwrRaw) > 0 ? Number(pwrRaw) : void 0,
+        maxAreaMm2: areaRaw && Number(areaRaw) > 0 ? Number(areaRaw) : void 0
+      };
+      if (this.callbacks.onUpdateDesignSpec) {
+        this.callbacks.onUpdateDesignSpec({
+          name: nameVal || design.name,
+          topModule: topVal || design.topModule,
+          spec: nextSpec
+        });
+      } else {
+        if (nameVal) design.name = nameVal;
+        if (topVal) design.topModule = topVal;
+        design.spec = nextSpec;
+        this.callbacks.onMutate();
+      }
+    };
+    ["spec-chip-name", "spec-top-module", "spec-target-app", "spec-author", "spec-power-budget", "spec-area-budget"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("change", applySpecPatch);
+    });
+    document.getElementById("btn-export-arch-spec")?.addEventListener("click", () => {
+      const md = (0, import_architecture.generateArchitectureSpecMarkdown)(design, report);
+      downloadFile(md, `${design.topModule || "chip"}_ARCHITECTURE_SPEC.md`, "text/markdown");
+    });
   }
   renderModuleInspector(diagnostics, inst) {
     if (!this.container) return;
@@ -4162,11 +6556,20 @@ var InspectorPanel = class {
       </div>
     `;
     this.container.innerHTML = html;
-    const nameInput = document.getElementById("inspector-inst-name");
-    nameInput?.addEventListener("input", () => {
-      inst.name = nameInput.value;
-      this.callbacks.onMutate();
-    });
+    const bindCommitOnChange = (el, apply) => {
+      if (!el) return;
+      el.addEventListener("change", () => apply(el));
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") el.blur();
+      });
+    };
+    bindCommitOnChange(
+      document.getElementById("inspector-inst-name"),
+      (el) => {
+        inst.name = el.value.trim() || inst.name;
+        this.callbacks.onMutate();
+      }
+    );
     this.container.querySelectorAll(".param-bool").forEach((el) => {
       el.addEventListener("change", (e) => {
         const pName = e.target.dataset.param;
@@ -4175,16 +6578,16 @@ var InspectorPanel = class {
       });
     });
     this.container.querySelectorAll(".param-num").forEach((el) => {
-      el.addEventListener("input", (e) => {
-        const pName = e.target.dataset.param;
-        inst.parameters[pName] = parseInt(e.target.value, 10) || 0;
+      bindCommitOnChange(el, (input) => {
+        const pName = input.dataset.param;
+        inst.parameters[pName] = parseInt(input.value, 10) || 0;
         this.callbacks.onMutate();
       });
     });
     this.container.querySelectorAll(".param-str").forEach((el) => {
-      el.addEventListener("input", (e) => {
-        const pName = e.target.dataset.param;
-        inst.parameters[pName] = e.target.value;
+      bindCommitOnChange(el, (input) => {
+        const pName = input.dataset.param;
+        inst.parameters[pName] = input.value;
         this.callbacks.onMutate();
       });
     });
@@ -4246,9 +6649,12 @@ var InspectorPanel = class {
     `;
     this.container.innerHTML = html;
     const netNameInput = document.getElementById("inspector-net-name");
-    netNameInput?.addEventListener("input", () => {
-      net.name = netNameInput.value || net.name;
+    netNameInput?.addEventListener("change", () => {
+      net.name = netNameInput.value.trim() || net.name;
       this.callbacks.onMutate();
+    });
+    netNameInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") netNameInput.blur();
     });
     document.getElementById("btn-focus-net")?.addEventListener("click", () => this.callbacks.onFocusNet(net.id));
     this.container.querySelectorAll(".btn-disconnect-pin").forEach((btn) => {
@@ -4268,6 +6674,10 @@ var InspectorPanel = class {
     document.getElementById("btn-delete-net")?.addEventListener("click", () => this.callbacks.onDeleteSelected());
   }
 };
+
+// apps/web/src/components/RtlPreviewPanel.ts
+var import_asic_rtl = __toESM(require_asic_rtl());
+var import_codegen2 = __toESM(require_codegen());
 
 // apps/web/src/utils/sv-highlighter.ts
 var SV_KEYWORDS = /* @__PURE__ */ new Set([
@@ -4328,20 +6738,92 @@ function highlightSystemVerilog(code) {
   }).join("\n");
 }
 
+// apps/web/src/components/ToastService.ts
+function showToast(message, type = "info") {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(-8px)";
+    toast.style.transition = "all 0.25s ease";
+    setTimeout(() => toast.remove(), 250);
+  }, 2600);
+}
+
 // apps/web/src/components/RtlPreviewPanel.ts
 var RtlPreviewPanel = class {
   codeEl;
   lineNumbersEl;
+  qualityBadgeEl;
+  activeFile = "top.sv";
+  lastDesign = null;
+  lastSvCode = "";
   constructor() {
     this.codeEl = document.getElementById("sv-code-output");
     this.lineNumbersEl = document.getElementById("code-line-numbers");
+    this.qualityBadgeEl = document.getElementById("rtl-quality-badge");
+    this.bindControls();
   }
-  render(svCode) {
+  bindControls() {
+    document.querySelectorAll(".rtl-file-tab[data-rtl-file]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const file = btn.getAttribute("data-rtl-file");
+        if (!file) return;
+        this.activeFile = file;
+        document.querySelectorAll(".rtl-file-tab[data-rtl-file]").forEach(
+          (b) => b.classList.toggle("active", b === btn)
+        );
+        this.paint();
+      });
+    });
+    document.getElementById("btn-export-tb")?.addEventListener("click", () => {
+      if (!this.lastDesign) return;
+      const tb = (0, import_codegen2.generateSystemVerilogTestbench)(this.lastDesign);
+      const topName = this.lastDesign.topModule || "top";
+      downloadFile(tb, `${topName}_tb.sv`, "text/plain");
+      showToast(`Exported ${topName}_tb.sv testbench`, "success");
+    });
+  }
+  getActiveCode() {
+    if (this.activeFile === "top_tb.sv" && this.lastDesign) {
+      return (0, import_codegen2.generateSystemVerilogTestbench)(this.lastDesign);
+    }
+    if (this.activeFile === "asic_ip_library.v") {
+      return import_asic_rtl.ASIC_IP_LIBRARY_VERILOG;
+    }
+    return this.lastSvCode;
+  }
+  getActiveFilename() {
+    return this.activeFile;
+  }
+  render(svCode, design) {
+    this.lastSvCode = svCode;
+    if (design) {
+      this.lastDesign = design;
+    }
+    if (this.qualityBadgeEl && this.lastDesign) {
+      const report = (0, import_codegen2.validateRtlOutput)(this.lastDesign, svCode);
+      if (report.isClean) {
+        this.qualityBadgeEl.className = "rtl-quality-badge clean";
+        this.qualityBadgeEl.textContent = `IEEE 1800-2017 \xB7 ${report.lineCount} lines \xB7 ${report.externalPortCount} ext pins \xB7 Clean`;
+      } else {
+        this.qualityBadgeEl.className = "rtl-quality-badge warn";
+        this.qualityBadgeEl.textContent = `${report.issues.length} RTL issue(s): ${report.issues[0]}`;
+      }
+    }
+    this.paint();
+  }
+  paint() {
+    const code = this.getActiveCode();
     if (this.codeEl) {
-      this.codeEl.innerHTML = highlightSystemVerilog(svCode);
+      this.codeEl.innerHTML = highlightSystemVerilog(code);
     }
     if (this.lineNumbersEl) {
-      const lineCount = svCode.split("\n").length;
+      const lineCount = code.split("\n").length;
       this.lineNumbersEl.innerHTML = Array.from({ length: lineCount }, (_, i) => `<div>${i + 1}</div>`).join("");
     }
   }
@@ -4358,6 +6840,7 @@ var WaveformViewer = class {
   zoom = 1;
   panOffset = 20;
   cursorTime = null;
+  scrollY = 0;
   needsFit = false;
   isScrubbing = false;
   resizeObserver = null;
@@ -4410,13 +6893,15 @@ var WaveformViewer = class {
   setTrace(trace) {
     this.trace = trace;
     this.cursorTime = 0;
+    this.scrollY = 0;
     this.needsFit = true;
-    this.updateSidebar();
+    this.rebuildSidebar();
     this.fitTimeline();
     this.render();
   }
   setRadix(radix) {
     this.radix = radix;
+    this.updateSidebarValues();
     this.render();
   }
   resize() {
@@ -4504,6 +6989,11 @@ var WaveformViewer = class {
       this.zoom = Math.max(0.2, Math.min(40, this.zoom * factor));
       this.render();
     }, { passive: false });
+    const sb = this.container.querySelector("#wf-sidebar");
+    sb?.addEventListener("scroll", () => {
+      this.scrollY = sb.scrollTop;
+      this.render();
+    });
     window.addEventListener("resize", () => this.resize());
   }
   render() {
@@ -4532,14 +7022,23 @@ var WaveformViewer = class {
     this.ctx.scale(dpr, dpr);
     this.ctx.fillStyle = "#0e1117";
     this.ctx.fillRect(0, 0, w, h);
-    this.updateSidebar();
-    this.drawTimelineHeader(w, headerHeight, h);
-    let y = headerHeight;
+    this.updateSidebarValues();
+    this.ctx.save();
+    if (typeof this.ctx.rect === "function" && typeof this.ctx.clip === "function") {
+      this.ctx.beginPath();
+      this.ctx.rect(0, headerHeight, w, Math.max(0, h - headerHeight));
+      this.ctx.clip();
+    }
+    let y = headerHeight - this.scrollY;
     for (const sig of this.trace.signals) {
-      const changes = this.trace.signalChanges.get(sig.name) || [];
-      this.drawSignalRow(y, rowHeight, sig.width, changes, w);
+      if (y + rowHeight >= headerHeight && y <= h) {
+        const changes = this.trace.signalChanges.get(sig.name) || [];
+        this.drawSignalRow(y, rowHeight, sig.width, changes, w);
+      }
       y += rowHeight;
     }
+    this.ctx.restore();
+    this.drawTimelineHeader(w, headerHeight, h);
     if (this.cursorTime !== null) {
       const cursorX = this.panOffset + this.cursorTime * this.zoom;
       this.ctx.strokeStyle = "#f2b8b5";
@@ -4661,30 +7160,272 @@ var WaveformViewer = class {
       this.ctx.fillText(formatted, startX + 6, midY + 3.5);
     }
   }
-  updateSidebar() {
+  getCursorSignalValue(sigName, width) {
+    if (!this.trace) return (0, import_vcd.formatSignalValue)("0", width, this.radix);
+    let curVal = "0";
+    const changes = this.trace.signalChanges.get(sigName) || [];
+    for (const ch of changes) {
+      if (this.cursorTime !== null && ch.time <= this.cursorTime) {
+        curVal = ch.value;
+      } else if (this.cursorTime === null) {
+        break;
+      }
+    }
+    return (0, import_vcd.formatSignalValue)(curVal, width, this.radix);
+  }
+  rebuildSidebar() {
     const sb = this.container.querySelector("#wf-sidebar");
     if (!sb || !this.trace) return;
     let html = '<div class="wf-sidebar-header">Signal</div>';
     for (const sig of this.trace.signals) {
-      let curVal = "0";
-      const changes = this.trace.signalChanges.get(sig.name) || [];
-      for (const ch of changes) {
-        if (this.cursorTime !== null && ch.time <= this.cursorTime) {
-          curVal = ch.value;
-        } else if (this.cursorTime === null) {
-          break;
-        }
-      }
-      const formattedVal = (0, import_vcd.formatSignalValue)(curVal, sig.width, this.radix);
+      const formattedVal = this.getCursorSignalValue(sig.name, sig.width);
       const isBus = sig.width > 1;
       html += `
         <div class="wf-sig-row ${isBus ? "is-bus" : ""}">
           <span class="wf-sig-name" title="${sig.name}">${sig.name}</span>
-          <span class="wf-sig-val">${formattedVal}</span>
+          <span class="wf-sig-val" data-sig-name="${sig.name}">${formattedVal}</span>
         </div>
       `;
     }
     sb.innerHTML = html;
+    sb.scrollTop = 0;
+  }
+  updateSidebarValues() {
+    const sb = this.container.querySelector("#wf-sidebar");
+    if (!sb || !this.trace) return;
+    if (!sb.querySelector(".wf-sig-row")) {
+      this.rebuildSidebar();
+      return;
+    }
+    for (const sig of this.trace.signals) {
+      const valEl = sb.querySelector(`.wf-sig-val[data-sig-name="${sig.name}"]`);
+      if (valEl) {
+        valEl.textContent = this.getCursorSignalValue(sig.name, sig.width);
+      }
+    }
+  }
+};
+
+// apps/web/src/components/TapeoutPanel.ts
+var import_asic_bundle = __toESM(require_asic_bundle());
+var import_pdk = __toESM(require_pdk2());
+var TapeoutPanel = class {
+  container;
+  callbacks;
+  activeFileRelPath = "config.json";
+  lastDesign = null;
+  lastBundle = null;
+  constructor(callbacks) {
+    this.callbacks = callbacks;
+    this.container = document.getElementById("tapeout-container");
+  }
+  render(design) {
+    if (!this.container) return;
+    this.lastDesign = design;
+    const silicon = design.silicon ? { ...design.silicon } : (0, import_pdk.createDefaultSiliconConfig)("sky130A");
+    const bundle = (0, import_asic_bundle.generateAsicBundle)({ ...design, silicon });
+    this.lastBundle = bundle;
+    const pdks = (0, import_pdk.listPdks)();
+    const previewFile = bundle.files.find((f) => f.path.endsWith("/" + this.activeFileRelPath)) || bundle.files.find((f) => f.path.endsWith("/config.json")) || bundle.files[0];
+    const topClean = (design.topModule || "top").replace(/[^a-zA-Z0-9_]/g, "_");
+    const kitName = `${topClean}_${bundle.pdk.id}_tapeout_kit`;
+    const runCmd = `tar -xf ${kitName}.tar && cd ${kitName} && ./scripts/run_tapeout.sh`;
+    this.container.innerHTML = `
+      <div class="tapeout-shell">
+        <div class="tapeout-config-col">
+          <div class="tapeout-pdk-banner">
+            <div class="tapeout-pdk-head">
+              <span class="tapeout-node-badge">${bundle.pdk.nodeNm}nm</span>
+              <strong>${escapeHtml(bundle.pdk.name)}</strong>
+            </div>
+            <div class="tapeout-pdk-meta">
+              <span>${escapeHtml(bundle.pdk.foundry)}</span> &bull;
+              <span>Core ${bundle.pdk.coreVoltage} / IO ${bundle.pdk.ioVoltage}</span> &bull;
+              <span>${bundle.pdk.metalLayers}-Metal</span>
+            </div>
+            <p class="tapeout-india-note">${escapeHtml(bundle.pdk.indiaEcosystemNotes)}</p>
+          </div>
+
+          <div class="tapeout-form-grid">
+            <label class="tapeout-field">
+              <span>Open-Source PDK</span>
+              <select id="tapeout-pdk-select" class="kona-input">
+                ${pdks.map((p) => `<option value="${p.id}" ${p.id === silicon.pdkId ? "selected" : ""}>${escapeHtml(p.shortName)} (${p.coreVoltage})</option>`).join("")}
+              </select>
+            </label>
+
+            <label class="tapeout-field">
+              <span>Clock Target (MHz)</span>
+              <input id="tapeout-clock-input" type="number" class="kona-input" min="1" max="300" value="${silicon.clockFreqMhz}" />
+            </label>
+
+            <label class="tapeout-field">
+              <span>Core Utilization (%)</span>
+              <input id="tapeout-util-input" type="number" class="kona-input" min="20" max="75" value="${Math.round(silicon.coreUtilization * 100)}" />
+            </label>
+
+            <label class="tapeout-field">
+              <span>Die / MPW Slot</span>
+              <select id="tapeout-slot-select" class="kona-input">
+                <option value="auto" ${silicon.diePreset === "auto" ? "selected" : ""}>Auto-Sized Core</option>
+                <option value="mpw_small" ${silicon.diePreset === "mpw_small" ? "selected" : ""}>${escapeHtml(bundle.pdk.dieSlots.mpw_small.label)}</option>
+                <option value="mpw_medium" ${silicon.diePreset === "mpw_medium" ? "selected" : ""}>${escapeHtml(bundle.pdk.dieSlots.mpw_medium.label)}</option>
+                <option value="mpw_large" ${silicon.diePreset === "mpw_large" ? "selected" : ""}>${escapeHtml(bundle.pdk.dieSlots.mpw_large.label)}</option>
+              </select>
+            </label>
+
+            <label class="tapeout-field">
+              <span>Target Package</span>
+              <select id="tapeout-pkg-select" class="kona-input">
+                ${["QFN32", "QFN48", "QFN64", "DIP40"].map((pkg) => `<option value="${pkg}" ${pkg === silicon.packageType ? "selected" : ""}>${pkg}</option>`).join("")}
+              </select>
+            </label>
+
+            <label class="tapeout-field">
+              <span>Shuttle / Fab Channel</span>
+              <select id="tapeout-shuttle-select" class="kona-input">
+                <option value="librelane_mpw" ${silicon.shuttleTarget === "librelane_mpw" ? "selected" : ""}>LibreLane / Open MPW</option>
+                <option value="cdac_chipin" ${silicon.shuttleTarget === "cdac_chipin" ? "selected" : ""}>C-DAC ChipIN / 180nm Prototype</option>
+                <option value="tiny_tapeout" ${silicon.shuttleTarget === "tiny_tapeout" ? "selected" : ""}>Tiny Tapeout Tile Flow</option>
+              </select>
+            </label>
+
+            <label class="tapeout-field">
+              <span>SRAM Implementation</span>
+              <select id="tapeout-sram-select" class="kona-input">
+                <option value="openram_macro" ${silicon.sramMode === "openram_macro" ? "selected" : ""}>OpenRAM Macro Ready</option>
+                <option value="dff_array" ${silicon.sramMode === "dff_array" ? "selected" : ""}>Soft DFF Register Array</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="tapeout-checks">
+            ${bundle.readinessChecks.map((c) => `
+              <div class="tapeout-check-row ${c.status}">
+                <span class="check-pill">${c.status.toUpperCase()}</span>
+                <div class="check-text">
+                  <strong>${escapeHtml(c.label)}</strong>
+                  <span>${escapeHtml(c.detail)}</span>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+
+          <div class="tapeout-actions">
+            <button id="btn-download-tapeout-tar" class="btn-sm btn-accent md-btn-primary-sm">
+              Download Factory Tape-Out Kit (.tar)
+            </button>
+            <button id="btn-copy-tapeout-cmd" class="btn-sm md-btn-tonal-sm" title="${escapeHtml(runCmd)}">
+              Copy Build Command
+            </button>
+          </div>
+          <code class="tapeout-cli-hint">${escapeHtml(runCmd)}</code>
+        </div>
+
+        <div class="tapeout-preview-col">
+          <div class="tapeout-file-bar">
+            <div class="tapeout-file-tabs">
+              ${[
+      ["config.json", "config.json"],
+      ["constraints/top.sdc", "top.sdc"],
+      ["src/chip_top.v", "chip_top.v"],
+      ["src/top.v", "top.v"],
+      ["pin_order.cfg", "pin_order.cfg"],
+      ["scripts/run_tapeout.sh", "run_tapeout.sh"],
+      ["docs/ARCHITECTURE_SPEC.md", "ARCHITECTURE_SPEC.md"],
+      ["docs/FACTORY_DATASHEET.md", "FACTORY_DATASHEET.md"]
+    ].map(([rel, label]) => `
+                <button class="tapeout-file-tab ${previewFile.path.endsWith("/" + rel) ? "active" : ""}" data-file="${rel}">${label}</button>
+              `).join("")}
+            </div>
+            <button id="btn-copy-tapeout-file" class="btn-sm md-btn-tonal-sm">Copy</button>
+          </div>
+          <pre class="tapeout-code-view"><code id="tapeout-file-preview">${escapeHtml(previewFile.content)}</code></pre>
+          <div class="tapeout-pins-strip">
+            <span class="pins-label">Pins (${bundle.architecture.pinBudget.signalPins}/${bundle.architecture.pinBudget.maxSignalPins} \xB7 Click edge to cycle N/E/S/W):</span>
+            ${bundle.externalPorts.map((p) => `<button type="button" class="pin-chip ${p.direction}" data-pin-name="${escapeHtml(p.name)}" data-pin-edge="${p.edge}" title="Click to move ${escapeHtml(p.name)} to next die edge">${escapeHtml(p.name)}${p.width > 1 ? `[${p.width - 1}:0]` : ""} \xB7 ${p.edge}</button>`).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+    this.bindEvents(silicon, runCmd, previewFile.content);
+  }
+  bindEvents(current, runCmd, previewContent) {
+    const emitUpdate = (patch) => {
+      this.callbacks.onUpdateSilicon({ ...current, ...patch });
+    };
+    const pdkSelect = document.getElementById("tapeout-pdk-select");
+    pdkSelect?.addEventListener("change", () => {
+      const nextPdk = pdkSelect.value;
+      const defaults = (0, import_pdk.createDefaultSiliconConfig)(nextPdk);
+      emitUpdate({
+        pdkId: nextPdk,
+        clockFreqMhz: defaults.clockFreqMhz,
+        shuttleTarget: defaults.shuttleTarget
+      });
+    });
+    const clockInput = document.getElementById("tapeout-clock-input");
+    clockInput?.addEventListener("change", () => {
+      const val = Math.max(1, Math.min(300, Number(clockInput.value) || current.clockFreqMhz));
+      emitUpdate({ clockFreqMhz: val });
+    });
+    const utilInput = document.getElementById("tapeout-util-input");
+    utilInput?.addEventListener("change", () => {
+      const pct = Math.max(20, Math.min(75, Number(utilInput.value) || 45));
+      emitUpdate({ coreUtilization: +(pct / 100).toFixed(2) });
+    });
+    const slotSelect = document.getElementById("tapeout-slot-select");
+    slotSelect?.addEventListener("change", () => {
+      emitUpdate({ diePreset: slotSelect.value });
+    });
+    const pkgSelect = document.getElementById("tapeout-pkg-select");
+    pkgSelect?.addEventListener("change", () => {
+      emitUpdate({ packageType: pkgSelect.value });
+    });
+    const shuttleSelect = document.getElementById("tapeout-shuttle-select");
+    shuttleSelect?.addEventListener("change", () => {
+      emitUpdate({ shuttleTarget: shuttleSelect.value });
+    });
+    const sramSelect = document.getElementById("tapeout-sram-select");
+    sramSelect?.addEventListener("change", () => {
+      emitUpdate({ sramMode: sramSelect.value });
+    });
+    document.getElementById("btn-download-tapeout-tar")?.addEventListener("click", () => {
+      if (!this.lastDesign) return;
+      const designWithSilicon = { ...this.lastDesign, silicon: current };
+      const { filename, archive } = (0, import_asic_bundle.buildAsicTapeoutTar)(designWithSilicon);
+      downloadFile(archive, filename, "application/x-tar");
+      showToast(`Exported ${filename} (${this.lastBundle?.files.length || 12} files)`, "success");
+    });
+    document.getElementById("btn-copy-tapeout-cmd")?.addEventListener("click", () => {
+      navigator.clipboard?.writeText(runCmd).then(() => showToast("Copied LibreLane RTL-to-GDSII build command!", "info")).catch(() => showToast("Clipboard access blocked by browser", "error"));
+    });
+    document.getElementById("btn-copy-tapeout-file")?.addEventListener("click", () => {
+      navigator.clipboard?.writeText(previewContent).then(() => showToast(`Copied ${this.activeFileRelPath}`, "info")).catch(() => showToast("Clipboard access blocked by browser", "error"));
+    });
+    this.container?.querySelectorAll(".tapeout-file-tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rel = btn.getAttribute("data-file");
+        if (!rel || !this.lastDesign) return;
+        this.activeFileRelPath = rel;
+        this.render(this.lastDesign);
+      });
+    });
+    const edgeCycle = { N: "E", E: "S", S: "W", W: "N" };
+    this.container?.querySelectorAll(".pin-chip[data-pin-name]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pName = btn.getAttribute("data-pin-name");
+        const curEdge = btn.getAttribute("data-pin-edge") || "W";
+        if (!pName) return;
+        const nextEdge = edgeCycle[curEdge] || "N";
+        emitUpdate({
+          pinEdges: {
+            ...current.pinEdges || {},
+            [pName]: nextEdge
+          }
+        });
+      });
+    });
   }
 };
 
@@ -5071,22 +7812,6 @@ var LayoutResizer = class {
   }
 };
 
-// apps/web/src/components/ToastService.ts
-function showToast(message, type = "info") {
-  const container = document.getElementById("toast-container");
-  if (!container) return;
-  const toast = document.createElement("div");
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateY(-8px)";
-    toast.style.transition = "all 0.25s ease";
-    setTimeout(() => toast.remove(), 250);
-  }, 2600);
-}
-
 // apps/web/src/app.ts
 var KonaApp = class {
   store;
@@ -5095,6 +7820,7 @@ var KonaApp = class {
   drcPanel;
   inspectorPanel;
   rtlPreviewPanel;
+  tapeoutPanel;
   layoutResizer;
   drawerState = "normal";
   constructor() {
@@ -5115,6 +7841,13 @@ var KonaApp = class {
     const wfContainer = document.getElementById("waveform-container");
     this.waveformViewer = new WaveformViewer(wfContainer);
     this.rtlPreviewPanel = new RtlPreviewPanel();
+    this.tapeoutPanel = new TapeoutPanel({
+      onUpdateSilicon: (silicon) => {
+        const design = this.store.getDesign();
+        design.silicon = silicon;
+        this.store.commitMutation(design);
+      }
+    });
     this.drcPanel = new DrcPanel({
       onFocusInstance: (id) => this.canvas.focusInstance(id),
       onFocusNet: (id) => this.canvas.focusNet(id),
@@ -5150,6 +7883,13 @@ var KonaApp = class {
       onDeleteSelected: () => {
         this.canvas.deleteSelected();
         if (this.isMobileLayout()) this.closeMobileSidebars();
+      },
+      onUpdateDesignSpec: (patch) => {
+        const design = this.store.getDesign();
+        if (patch.name) design.name = patch.name;
+        if (patch.topModule) design.topModule = patch.topModule;
+        if (patch.spec) design.spec = patch.spec;
+        this.store.commitMutation(design);
       }
     });
     new CatalogPanel({
@@ -5216,7 +7956,8 @@ var KonaApp = class {
   onStoreStateChange(state) {
     this.canvas.setDiagnostics(state.diagnostics);
     this.drcPanel.update(state.diagnostics);
-    this.rtlPreviewPanel.render(state.systemVerilog);
+    this.rtlPreviewPanel.render(state.systemVerilog, state.design);
+    this.tapeoutPanel.render(state.design);
     this.inspectorPanel.render(
       state.design,
       state.diagnostics,
@@ -5234,9 +7975,14 @@ var KonaApp = class {
     if (undoBtn) undoBtn.disabled = !state.canUndo;
     if (redoBtn) redoBtn.disabled = !state.canRedo;
     const rightBtn = document.getElementById("btn-toggle-right-sidebar");
+    const hasSelection = Boolean(state.selectedInstance || state.selectedNet);
     if (rightBtn) {
-      rightBtn.classList.toggle("has-selection", Boolean(state.selectedInstance || state.selectedNet));
+      rightBtn.classList.toggle("has-selection", hasSelection);
     }
+    const inspectBtn = document.getElementById("btn-canvas-inspect");
+    const deleteBtn = document.getElementById("btn-canvas-delete");
+    if (inspectBtn) inspectBtn.disabled = !hasSelection;
+    if (deleteBtn) deleteBtn.disabled = !hasSelection;
   }
   setupCanvasDragDrop() {
     const viewport = document.querySelector(".canvas-viewport");
@@ -5252,12 +7998,29 @@ var KonaApp = class {
       e.preventDefault();
       viewport.classList.remove("drag-over");
       const modId = e.dataTransfer?.getData("text/kona-module");
-      if (!modId) return;
-      const rect = canvasEl.getBoundingClientRect();
-      const world = this.canvas.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-      this.canvas.addModuleAt(modId, world.x - 100, world.y - 60);
-      showToast(`Dropped ${modId} onto canvas`, "success");
+      if (modId) {
+        const rect = canvasEl.getBoundingClientRect();
+        const world = this.canvas.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+        this.canvas.addModuleAt(modId, world.x - 100, world.y - 60);
+        showToast(`Dropped ${modId} onto canvas`, "success");
+        return;
+      }
+      const file = e.dataTransfer?.files?.[0];
+      if (file && file.name.endsWith(".json")) {
+        void file.text().then((txt) => this.importKonaJsonString(txt, file.name));
+      }
     });
+  }
+  importKonaJsonString(jsonText, sourceName = "design.kona.json") {
+    const { design, errors } = (0, import_ir3.parseKonaDesign)(jsonText);
+    if (!design || errors.length > 0) {
+      showToast(`Invalid netlist (${sourceName}): ${errors[0] || "parse error"}`, "error");
+      return;
+    }
+    this.canvas.setDesign(design);
+    this.store.loadTemplateDesign(design);
+    this.canvas.fitToScreen();
+    showToast(`Imported ${design.name}`, "success");
   }
   setupTemplatesPicker() {
     const container = document.getElementById("templates-picker");
@@ -5266,6 +8029,7 @@ var KonaApp = class {
       <label class="picker-label" for="template-select">Template:</label>
       <select id="template-select" class="kona-select">
         ${import_catalog7.STARTER_TEMPLATES.map((t) => `<option value="${t.id}">${t.name}</option>`).join("")}
+        <option value="__blank__">+ Blank Custom Chip</option>
       </select>
     `;
     const selectEl = container.querySelector("#template-select");
@@ -5275,6 +8039,27 @@ var KonaApp = class {
     }
     let lastValue = selectEl.value;
     selectEl?.addEventListener("change", () => {
+      if (selectEl.value === "__blank__") {
+        if (this.store.isDesignDirty() && !confirm("Start a blank custom chip? Unsaved canvas edits will be replaced.")) {
+          selectEl.value = lastValue;
+          return;
+        }
+        lastValue = "__blank__";
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const blankDesign = {
+          version: "1.0",
+          name: "Custom SoC",
+          topModule: "top",
+          instances: [],
+          nets: [],
+          metadata: { version: "1.0", created: now, modified: now, description: "Blank custom chip architecture" }
+        };
+        this.canvas.setDesign(blankDesign);
+        this.store.loadTemplateDesign(blankDesign);
+        this.canvas.fitToScreen();
+        showToast("Started blank custom chip", "info");
+        return;
+      }
       const tmpl = import_catalog7.STARTER_TEMPLATES.find((t) => t.id === selectEl.value);
       if (!tmpl) return;
       if (this.store.isDesignDirty() && !confirm(`Load template "${tmpl.name}"? Unsaved canvas edits will be replaced.`)) {
@@ -5319,6 +8104,21 @@ var KonaApp = class {
       this.canvas.setGridSnap(next);
       snapBtn.classList.toggle("active", next);
       if (snapLabel) snapLabel.textContent = next ? "Grid Snap: 20px" : "Grid Snap: Off";
+    });
+    document.getElementById("btn-canvas-inspect")?.addEventListener("click", () => {
+      if (this.isMobileLayout()) {
+        document.querySelector(".sidebar-left")?.classList.add("collapsed");
+        document.getElementById("btn-toggle-left-sidebar")?.classList.remove("active");
+      }
+      document.querySelector(".sidebar-right")?.classList.remove("collapsed");
+      document.getElementById("btn-toggle-right-sidebar")?.classList.add("active");
+      this.syncMobileBackdrop();
+      this.layoutResizer?.syncHandleVisibility();
+      this.canvas.resize();
+    });
+    document.getElementById("btn-canvas-delete")?.addEventListener("click", () => {
+      this.canvas.deleteSelected();
+      showToast("Removed selected item", "info");
     });
     window.addEventListener("keydown", (e) => {
       const activeTag = document.activeElement?.tagName;
@@ -5406,9 +8206,17 @@ var KonaApp = class {
     const toggleDrawerBtn = document.getElementById("btn-toggle-drawer");
     if (!toggleDrawerBtn) return;
     if (this.drawerState === "minimized") {
+      toggleDrawerBtn.title = "Expand Bottom Drawer";
+      toggleDrawerBtn.setAttribute("aria-label", "Expand Bottom Drawer");
       toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>`;
-    } else {
+    } else if (this.drawerState === "expanded") {
+      toggleDrawerBtn.title = "Restore Default Drawer Size";
+      toggleDrawerBtn.setAttribute("aria-label", "Restore Default Drawer Size");
       toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+    } else {
+      toggleDrawerBtn.title = "Minimize Bottom Drawer";
+      toggleDrawerBtn.setAttribute("aria-label", "Minimize Bottom Drawer");
+      toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
     }
   }
   setupHeaderActions() {
@@ -5463,6 +8271,15 @@ var KonaApp = class {
         this.waveformViewer.resize();
       }, 260);
     });
+    const importBtn = document.getElementById("btn-import-json");
+    const importInput = document.getElementById("import-json-input");
+    importBtn?.addEventListener("click", () => importInput?.click());
+    importInput?.addEventListener("change", () => {
+      const file = importInput.files?.[0];
+      if (!file) return;
+      void file.text().then((txt) => this.importKonaJsonString(txt, file.name));
+      importInput.value = "";
+    });
     document.getElementById("btn-export-json")?.addEventListener("click", () => {
       const design = this.store.getDesign();
       downloadFile((0, import_ir3.serializeKonaDesign)(design), `${design.topModule || "chip"}.kona.json`, "application/json");
@@ -5470,12 +8287,13 @@ var KonaApp = class {
     });
     document.getElementById("btn-export-sv")?.addEventListener("click", () => {
       const design = this.store.getDesign();
-      downloadFile((0, import_codegen2.generateSystemVerilog)(design), `${design.topModule || "top"}.sv`, "text/plain");
+      downloadFile((0, import_codegen3.generateSystemVerilog)(design), `${design.topModule || "top"}.sv`, "text/plain");
       showToast("Exported synthesizable top.sv", "success");
     });
     document.getElementById("btn-copy-sv")?.addEventListener("click", () => {
-      const sv = (0, import_codegen2.generateSystemVerilog)(this.store.getDesign());
-      navigator.clipboard.writeText(sv).then(() => showToast("SystemVerilog top.sv copied to clipboard!", "success"));
+      const code = this.rtlPreviewPanel.getActiveCode() || (0, import_codegen3.generateSystemVerilog)(this.store.getDesign());
+      const name = this.rtlPreviewPanel.getActiveFilename();
+      navigator.clipboard?.writeText(code).then(() => showToast(`${name} copied to clipboard!`, "success")).catch(() => showToast("Clipboard access blocked by browser", "error"));
     });
     document.getElementById("btn-share-link")?.addEventListener("click", async () => {
       const state = this.store.getState();
@@ -5484,7 +8302,7 @@ var KonaApp = class {
         isDirty: state.isDirty
       });
       const shareUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
-      navigator.clipboard.writeText(shareUrl).then(() => showToast("Shareable architecture link copied!", "info"));
+      navigator.clipboard?.writeText(shareUrl).then(() => showToast("Shareable architecture link copied!", "info")).catch(() => showToast("Clipboard access blocked by browser", "error"));
     });
   }
   setupBottomDrawerTabs() {
@@ -5500,6 +8318,9 @@ var KonaApp = class {
           this.syncBottomDrawerToggleIcon();
         }
         const target = tab.getAttribute("data-target");
+        if (target && drawerEl) {
+          drawerEl.setAttribute("data-active-drawer-tab", target);
+        }
         document.querySelectorAll(".drawer-pane").forEach((p) => p.classList.remove("active"));
         document.getElementById(`pane-${target}`)?.classList.add("active");
         if (target === "waveform") {

@@ -1,6 +1,11 @@
-import { KonaDesign, KonaModuleInstance, KonaNet } from '../../../../packages/core/dist/ir.js';
+import { KonaChipSpec, KonaDesign, KonaModuleInstance, KonaNet } from '../../../../packages/core/dist/ir.js';
 import { getModuleDef } from '../../../../packages/core/dist/catalog.js';
 import { DrcDiagnostic, getEffectivePortWidth } from '../../../../packages/core/dist/drc.js';
+import {
+  analyzeArchitecture,
+  generateArchitectureSpecMarkdown
+} from '../../../../packages/core/dist/architecture.js';
+import { downloadFile } from '../state/Persistence.js';
 import { escapeHtml } from '../utils/html.js';
 
 export interface InspectorCallbacks {
@@ -9,6 +14,7 @@ export interface InspectorCallbacks {
   onFocusNet: (netId: string) => void;
   onDuplicateSelected: () => void;
   onDeleteSelected: () => void;
+  onUpdateDesignSpec?: (patch: { name?: string; topModule?: string; spec?: KonaChipSpec }) => void;
 }
 
 /**
@@ -43,24 +49,133 @@ export class InspectorPanel {
 
   private renderEmptySummary(design: KonaDesign): void {
     if (!this.container) return;
+    const report = analyzeArchitecture(design);
+    const spec = design.spec || {};
+
     this.container.innerHTML = `
-      <div class="inspector-empty">
-        <div class="empty-graphic">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-            <rect x="3" y="3" width="18" height="18" rx="4" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="M21 15l-5-5L5 21" />
-          </svg>
+      <div class="inspector-stage1">
+        <div class="inspector-header">
+          <div class="inspector-header-top">
+            <span class="inspector-badge">STAGE 1 · ARCHITECTURE</span>
+            <button id="btn-export-arch-spec" class="btn-chip-action" title="Download Stage 1 Architecture Spec (.md)">Export Spec</button>
+          </div>
+          <h3>${escapeHtml(design.name)}</h3>
+          <p class="inspector-desc">Define chip PPA targets, inspect memory map, or click any block on canvas to inspect its ports.</p>
         </div>
-        <div class="empty-icon">Select a Block or Net</div>
-        <p>Click any module or wire on the schematic canvas to inspect its ports, tune parameters, or edit net connections.</p>
-        <div class="inspector-design-summary">
-          <div class="summary-row"><span>Design</span><strong>${escapeHtml(design.name)}</strong></div>
-          <div class="summary-row"><span>Top Module</span><code>${escapeHtml(design.topModule)}</code></div>
-          <div class="summary-row"><span>Modules / Nets</span><strong>${design.instances.length} / ${design.nets.length}</strong></div>
+
+        <div class="inspector-section">
+          <label class="section-title">Chip Specification</label>
+          <div class="spec-form">
+            <label class="spec-field">
+              <span>Chip Name</span>
+              <input type="text" id="spec-chip-name" class="kona-input" value="${escapeHtml(design.name)}" />
+            </label>
+            <label class="spec-field">
+              <span>Top Module</span>
+              <input type="text" id="spec-top-module" class="kona-input" value="${escapeHtml(design.topModule)}" />
+            </label>
+            <label class="spec-field">
+              <span>Target Application</span>
+              <input type="text" id="spec-target-app" class="kona-input" placeholder="e.g. Smart Meter RISC-V MCU" value="${escapeHtml(spec.targetApplication || '')}" />
+            </label>
+            <label class="spec-field">
+              <span>Author / Team</span>
+              <input type="text" id="spec-author" class="kona-input" placeholder="e.g. Silicon Team India" value="${escapeHtml(spec.author || '')}" />
+            </label>
+            <div class="spec-budget-row">
+              <label class="spec-field">
+                <span>Power Budget (mW)</span>
+                <input type="number" id="spec-power-budget" class="kona-input" min="1" step="1" placeholder="Auto" value="${spec.powerBudgetMw ?? ''}" />
+              </label>
+              <label class="spec-field">
+                <span>Max Area (mm²)</span>
+                <input type="number" id="spec-area-budget" class="kona-input" min="0.1" step="0.1" placeholder="Auto" value="${spec.maxAreaMm2 ?? ''}" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="inspector-section">
+          <label class="section-title">Estimated PPA &amp; Pin Budget (${escapeHtml(report.pdk.shortName)})</label>
+          <div class="inspector-design-summary" style="margin-top:0;">
+            <div class="summary-row"><span>Logic Size</span><strong>~${report.ppa.estimatedGates.toLocaleString()} GE</strong></div>
+            <div class="summary-row"><span>On-Chip SRAM</span><strong>${report.ppa.sramKbytes} KB</strong></div>
+            <div class="summary-row"><span>Est. Core Area</span><strong class="${report.ppa.withinAreaBudget ? '' : 'text-warn'}">~${report.ppa.estimatedAreaMm2} mm²</strong></div>
+            <div class="summary-row"><span>Est. Power @ ${report.ppa.clockFreqMhz}MHz</span><strong class="${report.ppa.withinPowerBudget ? '' : 'text-warn'}">~${report.ppa.estimatedPowerMw} mW</strong></div>
+            <div class="summary-row"><span>Package Pins (${report.pinBudget.packageType})</span><strong class="${report.pinBudget.fitsPackage ? '' : 'text-err'}">${report.pinBudget.signalPins}/${report.pinBudget.maxSignalPins} sig</strong></div>
+          </div>
+        </div>
+
+        <div class="inspector-section">
+          <label class="section-title">System Memory Map (${report.memoryMap.length})</label>
+          <div class="memmap-list">
+            ${report.memoryMap.length === 0
+              ? '<div class="empty-text">No bus crossbar in design (streaming datapath).</div>'
+              : report.memoryMap.map(r => `
+                <div class="memmap-row ${r.overlapsWith ? 'overlap' : ''}">
+                  <div class="memmap-top">
+                    <strong>${escapeHtml(r.crossbarName)}.${r.slot}</strong>
+                    <code>${r.baseHex}–${r.endHex}</code>
+                  </div>
+                  <div class="memmap-sub">${escapeHtml(r.targetInstances.join(', ') || 'Unconnected')}${r.overlapsWith ? ` · OVERLAP: ${escapeHtml(r.overlapsWith)}` : ''}</div>
+                </div>
+              `).join('')
+            }
+          </div>
+        </div>
+
+        <div class="inspector-section">
+          <label class="section-title">Stage 1 Readiness</label>
+          <div class="stage1-checklist">
+            ${report.checklist.map(item => `
+              <div class="stage1-check ${item.status}" title="${escapeHtml(item.detail)}">
+                <span class="stage1-dot"></span>
+                <span>${escapeHtml(item.label)}</span>
+              </div>
+            `).join('')}
+          </div>
         </div>
       </div>
     `;
+
+    const applySpecPatch = () => {
+      const nameVal = (document.getElementById('spec-chip-name') as HTMLInputElement | null)?.value.trim();
+      const topVal = (document.getElementById('spec-top-module') as HTMLInputElement | null)?.value.trim();
+      const appVal = (document.getElementById('spec-target-app') as HTMLInputElement | null)?.value.trim();
+      const authorVal = (document.getElementById('spec-author') as HTMLInputElement | null)?.value.trim();
+      const pwrRaw = (document.getElementById('spec-power-budget') as HTMLInputElement | null)?.value;
+      const areaRaw = (document.getElementById('spec-area-budget') as HTMLInputElement | null)?.value;
+
+      const nextSpec: KonaChipSpec = {
+        ...spec,
+        targetApplication: appVal || undefined,
+        author: authorVal || undefined,
+        powerBudgetMw: pwrRaw && Number(pwrRaw) > 0 ? Number(pwrRaw) : undefined,
+        maxAreaMm2: areaRaw && Number(areaRaw) > 0 ? Number(areaRaw) : undefined
+      };
+
+      if (this.callbacks.onUpdateDesignSpec) {
+        this.callbacks.onUpdateDesignSpec({
+          name: nameVal || design.name,
+          topModule: topVal || design.topModule,
+          spec: nextSpec
+        });
+      } else {
+        if (nameVal) design.name = nameVal;
+        if (topVal) design.topModule = topVal;
+        design.spec = nextSpec;
+        this.callbacks.onMutate();
+      }
+    };
+
+    ['spec-chip-name', 'spec-top-module', 'spec-target-app', 'spec-author', 'spec-power-budget', 'spec-area-budget'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', applySpecPatch);
+    });
+
+    document.getElementById('btn-export-arch-spec')?.addEventListener('click', () => {
+      const md = generateArchitectureSpecMarkdown(design, report);
+      downloadFile(md, `${design.topModule || 'chip'}_ARCHITECTURE_SPEC.md`, 'text/markdown');
+    });
   }
 
   private renderModuleInspector(diagnostics: DrcDiagnostic[], inst: KonaModuleInstance): void {
@@ -156,11 +271,21 @@ export class InspectorPanel {
 
     this.container.innerHTML = html;
 
-    const nameInput = document.getElementById('inspector-inst-name') as HTMLInputElement | null;
-    nameInput?.addEventListener('input', () => {
-      inst.name = nameInput.value;
-      this.callbacks.onMutate();
-    });
+    const bindCommitOnChange = (el: HTMLInputElement | null, apply: (input: HTMLInputElement) => void) => {
+      if (!el) return;
+      el.addEventListener('change', () => apply(el));
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') el.blur();
+      });
+    };
+
+    bindCommitOnChange(
+      document.getElementById('inspector-inst-name') as HTMLInputElement | null,
+      (el) => {
+        inst.name = el.value.trim() || inst.name;
+        this.callbacks.onMutate();
+      }
+    );
 
     this.container.querySelectorAll('.param-bool').forEach(el => {
       el.addEventListener('change', (e) => {
@@ -171,17 +296,17 @@ export class InspectorPanel {
     });
 
     this.container.querySelectorAll('.param-num').forEach(el => {
-      el.addEventListener('input', (e) => {
-        const pName = (e.target as HTMLInputElement).dataset.param!;
-        inst.parameters[pName] = parseInt((e.target as HTMLInputElement).value, 10) || 0;
+      bindCommitOnChange(el as HTMLInputElement, (input) => {
+        const pName = input.dataset.param!;
+        inst.parameters[pName] = parseInt(input.value, 10) || 0;
         this.callbacks.onMutate();
       });
     });
 
     this.container.querySelectorAll('.param-str').forEach(el => {
-      el.addEventListener('input', (e) => {
-        const pName = (e.target as HTMLInputElement).dataset.param!;
-        inst.parameters[pName] = (e.target as HTMLInputElement).value;
+      bindCommitOnChange(el as HTMLInputElement, (input) => {
+        const pName = input.dataset.param!;
+        inst.parameters[pName] = input.value;
         this.callbacks.onMutate();
       });
     });
@@ -253,9 +378,12 @@ export class InspectorPanel {
     this.container.innerHTML = html;
 
     const netNameInput = document.getElementById('inspector-net-name') as HTMLInputElement | null;
-    netNameInput?.addEventListener('input', () => {
-      net.name = netNameInput.value || net.name;
+    netNameInput?.addEventListener('change', () => {
+      net.name = netNameInput.value.trim() || net.name;
       this.callbacks.onMutate();
+    });
+    netNameInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') netNameInput.blur();
     });
 
     document.getElementById('btn-focus-net')?.addEventListener('click', () => this.callbacks.onFocusNet(net.id));

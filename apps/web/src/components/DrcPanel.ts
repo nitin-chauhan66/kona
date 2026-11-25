@@ -24,19 +24,31 @@ export class DrcPanel {
     const drcContainer = document.querySelector('.drc-panel-container');
     const drcBody = document.getElementById('drc-panel-body');
 
-    drcToggle?.addEventListener('click', () => {
+    const onActivateKey = (e: Event, fn: () => void) => {
+      const ke = e as KeyboardEvent;
+      if (ke.key === 'Enter' || ke.key === ' ') {
+        ke.preventDefault();
+        fn();
+      }
+    };
+
+    const toggleDrc = () => {
       if (!drcBody || !drcContainer) return;
       const collapsed = drcContainer.classList.toggle('collapsed');
       drcBody.style.display = collapsed ? 'none' : 'flex';
-    });
+    };
+    drcToggle?.addEventListener('click', toggleDrc);
+    drcToggle?.addEventListener('keydown', (e) => onActivateKey(e, toggleDrc));
 
-    drcChip?.addEventListener('click', () => {
+    const openDrc = () => {
       this.callbacks.onEnsureVisible();
       if (drcBody && drcContainer) {
         drcContainer.classList.remove('collapsed');
         drcBody.style.display = 'flex';
       }
-    });
+    };
+    drcChip?.addEventListener('click', openDrc);
+    drcChip?.addEventListener('keydown', (e) => onActivateKey(e, openDrc));
   }
 
   public update(diagnostics: DrcDiagnostic[]): void {

@@ -113,6 +113,15 @@ test('Real App: DOM Initialization and Lifecycle in Browser Environment', async 
   // Code output should now include clock_divider instance
   assert.ok(svOutput.textContent.includes('clock_divider'), 'SV preview should include newly added clock_divider');
 
+  // 4b. Verify Stage 2 RTL quality badge, testbench tab preview, and testbench download
+  const rtlBadge = window.document.getElementById('rtl-quality-badge');
+  assert.ok(rtlBadge && rtlBadge.textContent.includes('Clean'), 'RTL quality badge shows Clean');
+  const tbTab = window.document.querySelector('.rtl-file-tab[data-rtl-file="top_tb.sv"]');
+  tbTab.click();
+  assert.ok(svOutput.textContent.includes('module top_tb;'), 'Switching to top_tb.sv previews testbench');
+  window.document.querySelector('.rtl-file-tab[data-rtl-file="top.sv"]').click();
+  assert.ok(svOutput.textContent.includes('module top ('), 'Switching back restores top.sv');
+
   // 5. Test switching tabs to Waveform viewer
   const waveTab = window.document.querySelector('.drawer-tab[data-target="waveform"]');
   assert.ok(waveTab, 'Waveform drawer tab must exist');
@@ -169,6 +178,66 @@ test('Real App: DOM Initialization and Lifecycle in Browser Environment', async 
   const exportJsonBtn = window.document.getElementById('btn-export-json');
   exportJsonBtn.click();
   assert.ok(downloadedName.endsWith('.kona.json'), 'Export .kona.json should trigger download with .kona.json extension');
+
+  window.document.getElementById('btn-export-tb').click();
+  assert.ok(downloadedName.endsWith('_tb.sv'), 'Export top_tb.sv downloads testbench file');
+
+  // 10. Test Stage 1 Architecture Spec editor & export in Inspector
+  const targetAppInput = window.document.getElementById('spec-target-app');
+  assert.ok(targetAppInput, 'Stage 1 target application input must exist in Inspector');
+  targetAppInput.value = 'Smart Energy Meter SoC';
+  targetAppInput.dispatchEvent(new window.Event('change'));
+  assert.ok(window.document.getElementById('inspector-content').textContent.includes('System Memory Map'));
+
+  window.document.getElementById('btn-export-arch-spec').click();
+  assert.ok(downloadedName.endsWith('_ARCHITECTURE_SPEC.md'), 'Export Stage 1 Spec downloads markdown file');
+
+  // 11. Test Tape-Out & PDK workbench tab, PDK switching, pin-edge cycling, and .tar export
+  const tapeoutTab = window.document.querySelector('.drawer-tab[data-target="tapeout"]');
+  assert.ok(tapeoutTab, 'Tape-Out & PDK tab must exist');
+  tapeoutTab.click();
+  assert.ok(window.document.getElementById('pane-tapeout').classList.contains('active'));
+
+  const pdkSelect = window.document.getElementById('tapeout-pdk-select');
+  assert.ok(pdkSelect, 'PDK selector must exist');
+  pdkSelect.value = 'gf180mcuD';
+  pdkSelect.dispatchEvent(new window.Event('change'));
+
+  const previewText = window.document.getElementById('tapeout-file-preview').textContent;
+  assert.ok(previewText.includes('"PDK": "gf180mcuD"'), 'LibreLane config preview must update to gf180mcuD');
+
+  const clkPinChip = window.document.querySelector('.pin-chip[data-pin-name="clk_in"]');
+  assert.ok(clkPinChip);
+  const initialEdge = clkPinChip.getAttribute('data-pin-edge');
+  clkPinChip.click();
+  const nextEdge = window.document.querySelector('.pin-chip[data-pin-name="clk_in"]').getAttribute('data-pin-edge');
+  assert.notEqual(nextEdge, initialEdge, 'Clicking pin chip cycles die edge assignment');
+
+  const downloadTarBtn = window.document.getElementById('btn-download-tapeout-tar');
+  downloadTarBtn.click();
+  assert.ok(downloadedName.endsWith('_gf180mcuD_tapeout_kit.tar'), 'Tape-Out download must emit .tar archive');
+
+  // 12. UX checks: contextual drawer tab attribute, keyboard catalog add, canvas delete, blank template
+  const bottomDrawer = window.document.getElementById('app-bottom-drawer');
+  assert.equal(bottomDrawer.getAttribute('data-active-drawer-tab'), 'tapeout');
+
+  const inspectBtn = window.document.getElementById('btn-canvas-inspect');
+  const deleteBtn = window.document.getElementById('btn-canvas-delete');
+  assert.equal(inspectBtn.disabled, true, 'Inspect button disabled without selection');
+  assert.equal(deleteBtn.disabled, true, 'Delete button disabled without selection');
+
+  // Keyboard Enter on a catalog card adds & selects it, enabling canvas actions
+  const firstCard = window.document.querySelector('.catalog-card');
+  firstCard.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.equal(inspectBtn.disabled, false, 'Inspect button enables when module added/selected');
+  assert.equal(deleteBtn.disabled, false, 'Delete button enables when module added/selected');
+  deleteBtn.click();
+  assert.equal(deleteBtn.disabled, true, 'Delete button disables after removing selected block');
+
+  // Blank Custom Chip starter creates 0-block design
+  templateSelect.value = '__blank__';
+  templateSelect.dispatchEvent(new window.Event('change'));
+  assert.ok(window.document.getElementById('canvas-stats-text').textContent.startsWith('0 blocks'));
 });
 
 test('Real App: Mobile viewport (390px) auto-collapses drawers and manages overlay scrim', async () => {

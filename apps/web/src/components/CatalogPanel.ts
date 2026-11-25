@@ -74,7 +74,7 @@ export class CatalogPanel {
       this.listEl.innerHTML = `<div class="catalog-empty"><p>No matching IP modules found.</p></div>`;
     } else {
       this.listEl.innerHTML = items.map(mod => `
-        <div class="catalog-card" draggable="true" data-module-id="${mod.id}" title="${escapeHtml(mod.description)}">
+        <div class="catalog-card" role="button" tabindex="0" draggable="true" data-module-id="${mod.id}" title="${escapeHtml(mod.description)}">
           <div class="catalog-card-header">
             <span class="catalog-category-tag ${mod.category}">${mod.category}</span>
             <span class="catalog-meta-right">
@@ -88,9 +88,17 @@ export class CatalogPanel {
       `).join('');
 
       this.listEl.querySelectorAll('.catalog-card').forEach(card => {
-        card.addEventListener('click', () => {
+        const triggerAdd = () => {
           const modId = card.getAttribute('data-module-id');
           if (modId) this.callbacks.onAddModule(modId);
+        };
+        card.addEventListener('click', triggerAdd);
+        card.addEventListener('keydown', (e) => {
+          const ke = e as KeyboardEvent;
+          if (ke.key === 'Enter' || ke.key === ' ') {
+            ke.preventDefault();
+            triggerAdd();
+          }
         });
 
         card.addEventListener('dragstart', (e) => {

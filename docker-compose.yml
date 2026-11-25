@@ -1,10 +1,14 @@
 services:
   web:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: kona-web:local
     container_name: kona-web-server
     working_dir: /app
     volumes:
       - .:/app
+      - /app/node_modules
     ports:
       - "4173:4173"
     environment:
@@ -13,3 +17,17 @@ services:
       - HOST=0.0.0.0
     command: npm run dev
     restart: unless-stopped
+
+  tapeout-runner:
+    profiles: ["tapeout"]
+    build:
+      context: .
+      dockerfile: Dockerfile.tapeout
+    image: kona-tapeout-runner:local
+    container_name: kona-tapeout-runner
+    working_dir: /workspace
+    volumes:
+      - ./tapeout-work:/workspace
+    environment:
+      - PDK_ROOT=/opt/pdk
+    command: ./scripts/run_tapeout.sh

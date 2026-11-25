@@ -1,0 +1,24 @@
+# Open-Source PDK RTL-to-GDSII Runner (LibreLane / OpenLane 2 + Volare)
+# Produces factory-ready GDSII/OASIS, DRC, LVS, and multi-corner STA signoff.
+#
+# Usage:
+#   docker compose --profile tapeout build tapeout-runner
+#   docker compose --profile tapeout run --rm tapeout-runner ./scripts/run_tapeout.sh
+
+ARG LIBRELANE_IMAGE=ghcr.io/librelane/librelane:latest
+FROM ${LIBRELANE_IMAGE}
+
+ENV PDK_ROOT=/opt/pdk
+RUN mkdir -p "${PDK_ROOT}"
+
+# Pre-fetch open-source PDKs via Volare (SKY130 130nm, GF180MCU 180nm, IHP SG13G2 130nm)
+# You can limit PDK_LIST at build time, e.g.: --build-arg PDK_LIST="sky130 gf180mcu"
+ARG PDK_LIST="sky130 gf180mcu ihp_sg13g2"
+RUN if command -v volare >/dev/null 2>&1; then \
+      for pdk in ${PDK_LIST}; do \
+        volare enable --pdk "${pdk}" || true; \
+      done; \
+    fi
+
+WORKDIR /workspace
+CMD ["bash"]

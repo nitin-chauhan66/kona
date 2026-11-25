@@ -16,6 +16,7 @@ export class WaveformViewer {
   private zoom = 1.0;
   private panOffset = 20;
   private cursorTime: number | null = null;
+  private scrollY = 0;
   private needsFit = false;
   private isScrubbing = false;
   private resizeObserver: ResizeObserver | null = null;
@@ -73,14 +74,16 @@ export class WaveformViewer {
   public setTrace(trace: VcdTrace): void {
     this.trace = trace;
     this.cursorTime = 0;
+    this.scrollY = 0;
     this.needsFit = true;
-    this.updateSidebar();
+    this.rebuildSidebar();
     this.fitTimeline();
     this.render();
   }
 
   public setRadix(radix: 'hex' | 'dec' | 'bin'): void {
     this.radix = radix;
+    this.updateSidebarValues();
     this.render();
   }
 
@@ -185,6 +188,12 @@ export class WaveformViewer {
       this.render();
     }, { passive: false });
 
+    const sb = this.container.querySelector('#wf-sidebar') as HTMLElement | null;
+    sb?.addEventListener('scroll', () => {
+      this.scrollY = sb.scrollTop;
+      this.render();
+    });
+
     window.addEventListener('resize', () => this.resize());
   }
 
@@ -219,15 +228,27 @@ export class WaveformViewer {
     this.ctx.fillStyle = '#0e1117';
     this.ctx.fillRect(0, 0, w, h);
 
-    this.updateSidebar();
-    this.drawTimelineHeader(w, headerHeight, h);
+    this.updateSidebarValues();
 
-    let y = headerHeight;
+    // Clip signal traces below the sticky timeline header and apply sidebar vertical scroll
+    this.ctx.save();
+    if (typeof this.ctx.rect === 'function' && typeof this.ctx.clip === 'function') {
+      this.ctx.beginPath();
+      this.ctx.rect(0, headerHeight, w, Math.max(0, h - headerHeight));
+      this.ctx.clip();
+    }
+
+    let y = headerHeight - this.scrollY;
     for (const sig of this.trace.signals) {
-      const changes = this.trace.signalChanges.get(sig.name) || [];
-      this.drawSignalRow(y, rowHeight, sig.width, changes, w);
+      if (y + rowHeight >= headerHeight && y <= h) {
+        const changes = this.trace.signalChanges.get(sig.name) || [];
+        this.drawSignalRow(y, rowHeight, sig.width, changes, w);
+      }
       y += rowHeight;
     }
+    this.ctx.restore();
+
+    this.drawTimelineHeader(w, headerHeight, h);
 
     if (this.cursorTime !== null) {
       const cursorX = this.panOffset + this.cursorTime * this.zoom;
@@ -385,32 +406,52 @@ export class WaveformViewer {
     }
   }
 
-  private updateSidebar(): void {
-    const sb = this.container.querySelector('#wf-sidebar');
+  private getCursorSignalValue(sigName: string, width: number): string {
+    if (!this.trace) return formatSignalValue('0', width, this.radix);
+    let curVal = '0';
+    const changes = this.trace.signalChanges.get(sigName) || [];
+    for (const ch of changes) {
+      if (this.cursorTime !== null && ch.time <= this.cursorTime) {
+        curVal = ch.value;
+      } else if (this.cursorTime === null) {
+        break;
+      }
+    }
+    return formatSignalValue(curVal, width, this.radix);
+  }
+
+  private rebuildSidebar(): void {
+    const sb = this.container.querySelector('#wf-sidebar') as HTMLElement | null;
     if (!sb || !this.trace) return;
 
     let html = '<div class="wf-sidebar-header">Signal</div>';
     for (const sig of this.trace.signals) {
-      let curVal = '0';
-      const changes = this.trace.signalChanges.get(sig.name) || [];
-      for (const ch of changes) {
-        if (this.cursorTime !== null && ch.time <= this.cursorTime) {
-          curVal = ch.value;
-        } else if (this.cursorTime === null) {
-          break;
-        }
-      }
-
-      const formattedVal = formatSignalValue(curVal, sig.width, this.radix);
+      const formattedVal = this.getCursorSignalValue(sig.name, sig.width);
       const isBus = sig.width > 1;
 
       html += `
         <div class="wf-sig-row ${isBus ? 'is-bus' : ''}">
           <span class="wf-sig-name" title="${sig.name}">${sig.name}</span>
-          <span class="wf-sig-val">${formattedVal}</span>
+          <span class="wf-sig-val" data-sig-name="${sig.name}">${formattedVal}</span>
         </div>
       `;
     }
     sb.innerHTML = html;
+    sb.scrollTop = 0;
+  }
+
+  private updateSidebarValues(): void {
+    const sb = this.container.querySelector('#wf-sidebar');
+    if (!sb || !this.trace) return;
+    if (!sb.querySelector('.wf-sig-row')) {
+      this.rebuildSidebar();
+      return;
+    }
+    for (const sig of this.trace.signals) {
+      const valEl = sb.querySelector(`.wf-sig-val[data-sig-name="${sig.name}"]`);
+      if (valEl) {
+        valEl.textContent = this.getCursorSignalValue(sig.name, sig.width);
+      }
+    }
   }
 }

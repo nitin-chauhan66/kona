@@ -143,6 +143,8 @@ module uart_core #(
   output logic       rx_valid
 );
   logic [15:0] baud_cnt;
+  logic [3:0]  bit_idx;
+  logic [9:0]  shift_tx;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -151,11 +153,32 @@ module uart_core #(
       rx_data  <= 8'h00;
       rx_valid <= 1'b0;
       baud_cnt <= 16'h0;
+      bit_idx  <= 4'd0;
+      shift_tx <= 10'h3FF;
     end else begin
+      rx_valid <= 1'b0;
+      if (!rx && !rx_valid) begin
+        rx_data  <= shift_tx[8:1];
+        rx_valid <= 1'b1;
+      end
       if (tx_valid && !tx_busy) begin
-        tx_busy <= 1'b1;
+        tx_busy  <= 1'b1;
+        shift_tx <= {1'b1, tx_data, 1'b0};
+        bit_idx  <= 4'd10;
+        baud_cnt <= 16'h0;
       end else if (tx_busy) begin
-        tx_busy <= 1'b0;
+        if (baud_cnt >= BAUD_DIVISOR[15:0]) begin
+          baud_cnt <= 16'h0;
+          tx       <= shift_tx[0];
+          shift_tx <= {1'b1, shift_tx[9:1]};
+          if (bit_idx == 4'd1) begin
+            tx_busy <= 1'b0;
+          end else begin
+            bit_idx <= bit_idx - 4'd1;
+          end
+        end else begin
+          baud_cnt <= baud_cnt + 16'd1;
+        end
       end
     end
   end
@@ -239,14 +262,14 @@ module clock_divider #(
 
   always_ff @(posedge clk_in or negedge rst_n) begin
     if (!rst_n) begin
-      counter <= 16'h0;
+      counter <= 32'h0;
       clk_out <= 1'b0;
     end else begin
       if (counter >= (DIVISOR / 2 - 1)) begin
-        counter <= 16'h0;
+        counter <= 32'h0;
         clk_out <= ~clk_out;
       end else begin
-        counter <= counter + 1'b1;
+        counter <= counter + 32'd1;
       end
     end
   end
@@ -361,7 +384,7 @@ module spi_controller #(
   input  logic                  spi_miso
 );
   logic [3:0] bit_cnt;
-  logic [7:0] shift_reg;
+  logic [DATA_WIDTH-1:0] shift_reg;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -378,13 +401,13 @@ module spi_controller #(
         shift_reg <= tx_data;
         spi_cs_n  <= 1'b0;
         tx_ready  <= 1'b0;
-        bit_cnt   <= 4'd8;
+        bit_cnt   <= DATA_WIDTH[3:0];
       end else if (!spi_cs_n) begin
         spi_sclk <= ~spi_sclk;
         if (spi_sclk) begin
-          spi_mosi <= shift_reg[7];
-          shift_reg <= {shift_reg[6:0], spi_miso};
-          bit_cnt <= bit_cnt - 1'b1;
+          spi_mosi <= shift_reg[DATA_WIDTH-1];
+          shift_reg <= {shift_reg[DATA_WIDTH-2:0], spi_miso};
+          bit_cnt <= bit_cnt - 4'd1;
           if (bit_cnt == 4'd1) begin
             spi_cs_n <= 1'b1;
             tx_ready <= 1'b1;
