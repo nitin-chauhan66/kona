@@ -1264,10 +1264,10 @@ var require_drc = __commonJS({
   "packages/core/dist/drc.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.getEffectivePortWidth = getEffectivePortWidth2;
+    exports.getEffectivePortWidth = getEffectivePortWidth3;
     exports.runDesignRuleCheck = runDesignRuleCheck2;
     var catalog_js_1 = require_catalog();
-    function getEffectivePortWidth2(modDef, port, inst) {
+    function getEffectivePortWidth3(modDef, port, inst) {
       if (!inst || !modDef)
         return port.width;
       if ((modDef.id === "sync_fifo" || modDef.id === "gpio_controller") && typeof inst.parameters["WIDTH"] === "number") {
@@ -1345,7 +1345,7 @@ var require_drc = __commonJS({
                 portId: net.source.portId
               });
             } else {
-              const effectiveWidth = getEffectivePortWidth2(modDef, port, srcInst);
+              const effectiveWidth = getEffectivePortWidth3(modDef, port, srcInst);
               if (effectiveWidth !== net.width) {
                 diagnostics.push({
                   id: `drc_width_src_${net.id}`,
@@ -1390,7 +1390,7 @@ var require_drc = __commonJS({
                 portId: tgt.portId
               });
             } else {
-              const effectiveWidth = getEffectivePortWidth2(modDef, port, tgtInst);
+              const effectiveWidth = getEffectivePortWidth3(modDef, port, tgtInst);
               if (effectiveWidth !== net.width) {
                 diagnostics.push({
                   id: `drc_width_tgt_${net.id}_${tgt.instanceId}_${tgt.portId}`,
@@ -1774,22 +1774,39 @@ var import_sim = __toESM(require_sim());
 // apps/web/src/canvas.ts
 var import_catalog = __toESM(require_catalog());
 var import_drc = __toESM(require_drc());
+var GRID_SIZE = 20;
+var HEADER_HEIGHT = 34;
+var SUBTITLE_HEIGHT = 22;
+var TOP_RESERVED = HEADER_HEIGHT + SUBTITLE_HEIGHT;
+var PORT_PITCH = 26;
+var BOTTOM_PAD = 18;
 var SchematicCanvas = class {
   canvas;
   ctx;
   design;
+  diagnostics = [];
   transform = { x: 40, y: 40, scale: 1 };
   selectedInstanceId = null;
   selectedNetId = null;
+  hoveredInstanceId = null;
+  hoveredNetId = null;
+  hoveredPort = null;
   draggingInstanceId = null;
   dragOffset = { x: 0, y: 0 };
   isPanning = false;
   panStart = { x: 0, y: 0 };
+  spacePressed = false;
+  toolMode = "select";
+  gridSnap = true;
   wiringSource = null;
   wiringCurrent = { x: 0, y: 0 };
-  hoveredPort = null;
+  mouseScreen = { x: 0, y: 0 };
+  renderedWires = [];
+  resizeObserver = null;
   onSelectCallback;
+  onNetSelectCallback;
   onChangeCallback;
+  onViewChangeCallback;
   constructor(canvas, initialDesign) {
     this.canvas = canvas;
     const ctx = canvas.getContext("2d");
@@ -1797,27 +1814,64 @@ var SchematicCanvas = class {
     this.ctx = ctx;
     this.design = initialDesign;
     this.setupEvents();
+    this.setupResizeObserver();
     this.resize();
     this.render();
+  }
+  setupResizeObserver() {
+    const parent = this.canvas.parentElement;
+    if (parent && typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.resize();
+      });
+      this.resizeObserver.observe(parent);
+    }
+    window.addEventListener("resize", () => this.resize());
   }
   setDesign(newDesign) {
     this.design = newDesign;
     this.selectedInstanceId = null;
     this.selectedNetId = null;
+    this.hoveredNetId = null;
+    this.hoveredPort = null;
     this.render();
-    if (this.onSelectCallback) this.onSelectCallback(null);
+    this.notifySelection();
   }
   getDesign() {
     return this.design;
   }
+  setDiagnostics(diagnostics) {
+    this.diagnostics = diagnostics;
+    this.render();
+  }
+  setToolMode(mode) {
+    this.toolMode = mode;
+    this.updateCursor();
+  }
+  getToolMode() {
+    return this.toolMode;
+  }
+  setGridSnap(enabled) {
+    this.gridSnap = enabled;
+  }
+  isGridSnapEnabled() {
+    return this.gridSnap;
+  }
   onSelectionChange(cb) {
     this.onSelectCallback = cb;
+  }
+  onNetSelectionChange(cb) {
+    this.onNetSelectCallback = cb;
   }
   onDesignChange(cb) {
     this.onChangeCallback = cb;
   }
+  onViewChange(cb) {
+    this.onViewChangeCallback = cb;
+  }
   resize() {
     const rect = this.canvas.parentElement?.getBoundingClientRect() || this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.floor(rect.width * dpr);
     this.canvas.height = Math.floor(rect.height * dpr);
@@ -1826,25 +1880,126 @@ var SchematicCanvas = class {
     this.ctx.resetTransform?.();
     this.render();
   }
+  getViewportSize() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = this.canvas.width / dpr || this.canvas.clientWidth || 800;
+    const h = this.canvas.height / dpr || this.canvas.clientHeight || 500;
+    return { w, h };
+  }
   updateZoomLabel() {
     const label = document.getElementById("btn-zoom-reset");
     if (label) {
       label.textContent = `${Math.round(this.transform.scale * 100)}%`;
     }
+    this.onViewChangeCallback?.({ ...this.transform });
   }
   zoomIn() {
-    this.transform.scale = Math.min(3, this.transform.scale * 1.2);
-    this.updateZoomLabel();
-    this.render();
+    const { w, h } = this.getViewportSize();
+    this.zoomAt(w / 2, h / 2, 1.2);
   }
   zoomOut() {
-    this.transform.scale = Math.max(0.3, this.transform.scale / 1.2);
-    this.updateZoomLabel();
-    this.render();
+    const { w, h } = this.getViewportSize();
+    this.zoomAt(w / 2, h / 2, 1 / 1.2);
   }
   resetZoom() {
     this.transform = { x: 60, y: 60, scale: 1 };
     this.updateZoomLabel();
+    this.render();
+  }
+  zoomAt(screenX, screenY, factor) {
+    const newScale = Math.max(0.2, Math.min(2.8, this.transform.scale * factor));
+    const ratio = newScale / this.transform.scale;
+    this.transform.x = screenX - (screenX - this.transform.x) * ratio;
+    this.transform.y = screenY - (screenY - this.transform.y) * ratio;
+    this.transform.scale = newScale;
+    this.updateZoomLabel();
+    this.render();
+  }
+  fitToScreen(padding = 56) {
+    if (this.design.instances.length === 0) {
+      this.resetZoom();
+      return;
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const inst of this.design.instances) {
+      const modDef = (0, import_catalog.getModuleDef)(inst.moduleId);
+      const { w, h } = this.getInstanceDimensions(modDef, inst);
+      minX = Math.min(minX, inst.position.x);
+      minY = Math.min(minY, inst.position.y);
+      maxX = Math.max(maxX, inst.position.x + w);
+      maxY = Math.max(maxY, inst.position.y + h);
+    }
+    const { w: viewW, h: viewH } = this.getViewportSize();
+    const contentW = Math.max(100, maxX - minX);
+    const contentH = Math.max(100, maxY - minY);
+    const usableW = Math.max(120, viewW - padding * 2);
+    const usableH = Math.max(120, viewH - padding * 2 - 20);
+    const scale = Math.min(1.05, Math.max(0.22, Math.min(usableW / contentW, usableH / contentH)));
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    this.transform = {
+      scale,
+      x: viewW / 2 - centerX * scale,
+      y: viewH / 2 - centerY * scale
+    };
+    this.updateZoomLabel();
+    this.render();
+  }
+  focusInstance(instanceId) {
+    const inst = this.design.instances.find((i) => i.id === instanceId);
+    if (!inst) return;
+    const modDef = (0, import_catalog.getModuleDef)(inst.moduleId);
+    const { w, h } = this.getInstanceDimensions(modDef, inst);
+    const { w: viewW, h: viewH } = this.getViewportSize();
+    this.selectedInstanceId = inst.id;
+    this.selectedNetId = null;
+    const targetScale = Math.max(this.transform.scale, 0.85);
+    this.transform = {
+      scale: targetScale,
+      x: viewW / 2 - (inst.position.x + w / 2) * targetScale,
+      y: viewH / 2 - (inst.position.y + h / 2) * targetScale
+    };
+    this.updateZoomLabel();
+    this.notifySelection();
+    this.render();
+  }
+  focusNet(netId) {
+    const net = this.design.nets.find((n) => n.id === netId);
+    if (!net) return;
+    this.selectedNetId = net.id;
+    this.selectedInstanceId = null;
+    const portMap = this.buildPortMap();
+    const pts = [];
+    if (net.source) {
+      const p = portMap.get(`${net.source.instanceId}:${net.source.portId}`);
+      if (p) pts.push(p);
+    }
+    for (const t of net.targets) {
+      const p = portMap.get(`${t.instanceId}:${t.portId}`);
+      if (p) pts.push(p);
+    }
+    if (pts.length > 0) {
+      const avgX = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+      const avgY = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+      const { w: viewW, h: viewH } = this.getViewportSize();
+      const targetScale = Math.max(this.transform.scale, 0.85);
+      this.transform = {
+        scale: targetScale,
+        x: viewW / 2 - avgX * targetScale,
+        y: viewH / 2 - avgY * targetScale
+      };
+      this.updateZoomLabel();
+    }
+    this.notifySelection();
+    this.render();
+  }
+  selectInstance(instanceId) {
+    this.selectedInstanceId = instanceId;
+    this.selectedNetId = null;
+    this.notifySelection();
     this.render();
   }
   deleteSelected() {
@@ -1854,7 +2009,7 @@ var SchematicCanvas = class {
       this.design.nets = this.design.nets.filter((n) => {
         if (n.source?.instanceId === id) return false;
         n.targets = n.targets.filter((t) => t.instanceId !== id);
-        return true;
+        return n.targets.length > 0 || !!n.source;
       });
       this.selectedInstanceId = null;
       this.render();
@@ -1865,49 +2020,66 @@ var SchematicCanvas = class {
       this.selectedNetId = null;
       this.render();
       this.notifyChange();
+      this.notifySelection();
     }
   }
+  duplicateSelected() {
+    if (!this.selectedInstanceId) return null;
+    const orig = this.design.instances.find((i) => i.id === this.selectedInstanceId);
+    if (!orig) return null;
+    const count = this.design.instances.filter((i) => i.moduleId === orig.moduleId).length + 1;
+    const copy = {
+      id: `${orig.moduleId}_${Date.now()}`,
+      moduleId: orig.moduleId,
+      name: `u_${orig.moduleId}_${count}`,
+      position: {
+        x: orig.position.x + 40,
+        y: orig.position.y + 40
+      },
+      parameters: { ...orig.parameters }
+    };
+    this.design.instances.push(copy);
+    this.selectedInstanceId = copy.id;
+    this.selectedNetId = null;
+    this.render();
+    this.notifyChange();
+    this.notifySelection();
+    return copy;
+  }
   addModule(moduleId, name) {
+    const { w, h } = this.getViewportSize();
+    const viewCenterX = (-this.transform.x + w / 2) / this.transform.scale;
+    const viewCenterY = (-this.transform.y + h / 2) / this.transform.scale;
+    const offset = this.design.instances.length % 4 * 20;
+    return this.addModuleAt(moduleId, viewCenterX - 100 + offset, viewCenterY - 80 + offset, name);
+  }
+  addModuleAt(moduleId, worldX, worldY, name) {
     const modDef = (0, import_catalog.getModuleDef)(moduleId);
     const count = this.design.instances.filter((i) => i.moduleId === moduleId).length + 1;
     const instName = name || `u_${moduleId}_${count}`;
-    const id = `${moduleId}_${Date.now()}`;
-    const viewCenterX = (-this.transform.x + this.canvas.clientWidth / 2) / this.transform.scale;
-    const viewCenterY = (-this.transform.y + this.canvas.clientHeight / 2) / this.transform.scale;
+    const id = `${moduleId}_${Date.now()}_${Math.floor(Math.random() * 100)}`;
     const defaultParams = {};
     if (modDef) {
       for (const p of modDef.parameters) {
         defaultParams[p.name] = p.default;
       }
     }
+    const posX = this.gridSnap ? Math.round(worldX / GRID_SIZE) * GRID_SIZE : Math.round(worldX);
+    const posY = this.gridSnap ? Math.round(worldY / GRID_SIZE) * GRID_SIZE : Math.round(worldY);
     const newInst = {
       id,
       moduleId,
       name: instName,
-      position: {
-        x: Math.round(viewCenterX / 20) * 20 - 100,
-        y: Math.round(viewCenterY / 20) * 20 - 80
-      },
+      position: { x: posX, y: posY },
       parameters: defaultParams
     };
     this.design.instances.push(newInst);
     this.selectedInstanceId = newInst.id;
+    this.selectedNetId = null;
     this.render();
     this.notifyChange();
     this.notifySelection();
     return newInst;
-  }
-  notifyChange() {
-    this.design.metadata.modified = (/* @__PURE__ */ new Date()).toISOString();
-    if (this.onChangeCallback) {
-      this.onChangeCallback(this.design);
-    }
-  }
-  notifySelection() {
-    if (this.onSelectCallback) {
-      const inst = this.design.instances.find((i) => i.id === this.selectedInstanceId) || null;
-      this.onSelectCallback(inst);
-    }
   }
   screenToWorld(sx, sy) {
     return {
@@ -1915,97 +2087,166 @@ var SchematicCanvas = class {
       y: (sy - this.transform.y) / this.transform.scale
     };
   }
+  notifyChange() {
+    this.design.metadata.modified = (/* @__PURE__ */ new Date()).toISOString();
+    this.onChangeCallback?.(this.design);
+  }
+  notifySelection() {
+    const inst = this.selectedInstanceId ? this.design.instances.find((i) => i.id === this.selectedInstanceId) || null : null;
+    const net = this.selectedNetId ? this.design.nets.find((n) => n.id === this.selectedNetId) || null : null;
+    this.onSelectCallback?.(inst);
+    this.onNetSelectCallback?.(net);
+  }
+  /**
+   * Compute consistent dynamic block dimensions so port pins and labels
+   * never collide with the header, subtitle, or opposite-side labels.
+   */
+  getInstanceDimensions(modDef, inst) {
+    if (!modDef) return { w: 200, h: 180 };
+    const inputPorts = modDef.ports.filter((p) => p.direction === "input");
+    const outputPorts = modDef.ports.filter((p) => p.direction === "output");
+    const inoutPorts = modDef.ports.filter((p) => p.direction === "inout");
+    const maxSidePorts = Math.max(inputPorts.length, outputPorts.length, 1);
+    const minPortH = TOP_RESERVED + maxSidePorts * PORT_PITCH + BOTTOM_PAD + (inoutPorts.length > 0 ? 22 : 0);
+    const h = Math.max(modDef.defaultHeight || 160, minPortH);
+    const maxLeftChars = inputPorts.reduce((max, p) => {
+      const ew = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
+      const len = p.name.length + (ew > 1 ? `[${ew - 1}:0]`.length : 0);
+      return Math.max(max, len);
+    }, 0);
+    const maxRightChars = outputPorts.reduce((max, p) => {
+      const ew = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
+      const len = p.name.length + (ew > 1 ? `[${ew - 1}:0]`.length : 0);
+      return Math.max(max, len);
+    }, 0);
+    const estimatedLabelW = (maxLeftChars + maxRightChars) * 6.6 + 44;
+    const w = Math.max(modDef.defaultWidth || 200, Math.ceil(estimatedLabelW / 10) * 10);
+    return { w, h };
+  }
   getAllPortPositions() {
     const ports = [];
     for (const inst of this.design.instances) {
       const modDef = (0, import_catalog.getModuleDef)(inst.moduleId);
       if (!modDef) continue;
-      const width = modDef.defaultWidth || 200;
-      const height = modDef.defaultHeight || 200;
+      const { w, h } = this.getInstanceDimensions(modDef, inst);
       const inputPorts = modDef.ports.filter((p) => p.direction === "input");
       const outputPorts = modDef.ports.filter((p) => p.direction === "output");
       const inoutPorts = modDef.ports.filter((p) => p.direction === "inout");
-      const inSpacing = height / (inputPorts.length + 1);
+      const portAreaTop = inst.position.y + TOP_RESERVED + 6;
+      const portAreaBottom = inst.position.y + h - (inoutPorts.length > 0 ? 24 : 10);
+      const portAreaH = Math.max(24, portAreaBottom - portAreaTop);
+      const inSpacing = portAreaH / (inputPorts.length + 1);
       inputPorts.forEach((p, idx) => {
-        const effectiveWidth = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
         ports.push({
           instanceId: inst.id,
           portId: p.id,
           x: inst.position.x,
-          y: inst.position.y + inSpacing * (idx + 1),
+          y: portAreaTop + inSpacing * (idx + 1),
           direction: "input",
-          width: effectiveWidth,
+          width: (0, import_drc.getEffectivePortWidth)(modDef, p, inst),
           name: p.name,
-          type: p.type
+          type: p.type,
+          description: p.description
         });
       });
-      const outSpacing = height / (outputPorts.length + 1);
+      const outSpacing = portAreaH / (outputPorts.length + 1);
       outputPorts.forEach((p, idx) => {
-        const effectiveWidth = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
         ports.push({
           instanceId: inst.id,
           portId: p.id,
-          x: inst.position.x + width,
-          y: inst.position.y + outSpacing * (idx + 1),
+          x: inst.position.x + w,
+          y: portAreaTop + outSpacing * (idx + 1),
           direction: "output",
-          width: effectiveWidth,
+          width: (0, import_drc.getEffectivePortWidth)(modDef, p, inst),
           name: p.name,
-          type: p.type
+          type: p.type,
+          description: p.description
         });
       });
-      const inoutSpacing = width / (inoutPorts.length + 1);
+      const inoutSpacing = w / (inoutPorts.length + 1);
       inoutPorts.forEach((p, idx) => {
-        const effectiveWidth = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
         ports.push({
           instanceId: inst.id,
           portId: p.id,
           x: inst.position.x + inoutSpacing * (idx + 1),
-          y: inst.position.y + height,
+          y: inst.position.y + h,
           direction: "inout",
-          width: effectiveWidth,
+          width: (0, import_drc.getEffectivePortWidth)(modDef, p, inst),
           name: p.name,
-          type: p.type
+          type: p.type,
+          description: p.description
         });
       });
     }
     return ports;
   }
+  buildPortMap() {
+    const map = /* @__PURE__ */ new Map();
+    for (const p of this.getAllPortPositions()) {
+      map.set(`${p.instanceId}:${p.portId}`, p);
+    }
+    return map;
+  }
+  updateCursor() {
+    if (this.isPanning) {
+      this.canvas.style.cursor = "grabbing";
+    } else if (this.spacePressed || this.toolMode === "pan") {
+      this.canvas.style.cursor = "grab";
+    } else if (this.wiringSource || this.hoveredPort) {
+      this.canvas.style.cursor = "crosshair";
+    } else if (this.hoveredNetId) {
+      this.canvas.style.cursor = "pointer";
+    } else if (this.hoveredInstanceId) {
+      this.canvas.style.cursor = "move";
+    } else {
+      this.canvas.style.cursor = "default";
+    }
+  }
+  findHitWire(world) {
+    const threshold = Math.max(7, 8 / this.transform.scale);
+    for (let i = this.renderedWires.length - 1; i >= 0; i--) {
+      const wire = this.renderedWires[i];
+      for (let s = 0; s < wire.points.length - 1; s++) {
+        const a = wire.points[s];
+        const b = wire.points[s + 1];
+        if (distPointToSegment(world.x, world.y, a.x, a.y, b.x, b.y) <= threshold) {
+          return wire;
+        }
+      }
+    }
+    return null;
+  }
   setupEvents() {
     let hasMoved = false;
     this.canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
-      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const mouse = { x: e.offsetX, y: e.offsetY };
-      const newScale = Math.max(0.2, Math.min(3, this.transform.scale * zoomFactor));
-      this.transform.x = mouse.x - (mouse.x - this.transform.x) * (newScale / this.transform.scale);
-      this.transform.y = mouse.y - (mouse.y - this.transform.y) * (newScale / this.transform.scale);
-      this.transform.scale = newScale;
-      this.updateZoomLabel();
-      this.render();
-    });
+      const zoomFactor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      this.zoomAt(e.offsetX, e.offsetY, zoomFactor);
+    }, { passive: false });
     this.canvas.addEventListener("mousedown", (e) => {
       const world = this.screenToWorld(e.offsetX, e.offsetY);
       hasMoved = false;
-      const allPorts = this.getAllPortPositions();
-      const clickedPort = allPorts.find((p) => {
-        const dist = Math.hypot(p.x - world.x, p.y - world.y);
-        return dist <= 10;
-      });
-      if (clickedPort) {
-        this.wiringSource = clickedPort;
-        this.wiringCurrent = { x: world.x, y: world.y };
-        this.render();
-        return;
+      if (!this.spacePressed && this.toolMode !== "pan" && e.button === 0) {
+        const allPorts = this.getAllPortPositions();
+        const hitRadius = Math.max(10, 11 / this.transform.scale);
+        const clickedPort = allPorts.find((p) => Math.hypot(p.x - world.x, p.y - world.y) <= hitRadius);
+        if (clickedPort) {
+          this.wiringSource = clickedPort;
+          this.wiringCurrent = { x: world.x, y: world.y };
+          this.updateCursor();
+          this.render();
+          return;
+        }
       }
-      if (e.button === 1 || e.altKey || e.shiftKey) {
+      if (e.button === 1 || e.altKey || this.spacePressed || this.toolMode === "pan") {
         this.isPanning = true;
         this.panStart = { x: e.clientX - this.transform.x, y: e.clientY - this.transform.y };
+        this.updateCursor();
         return;
       }
       const clickedInst = [...this.design.instances].reverse().find((inst) => {
         const modDef = (0, import_catalog.getModuleDef)(inst.moduleId);
-        const w = modDef?.defaultWidth || 200;
-        const h = modDef?.defaultHeight || 200;
+        const { w, h } = this.getInstanceDimensions(modDef, inst);
         return world.x >= inst.position.x && world.x <= inst.position.x + w && world.y >= inst.position.y && world.y <= inst.position.y + h;
       });
       if (clickedInst) {
@@ -2020,10 +2261,19 @@ var SchematicCanvas = class {
         this.render();
         return;
       }
+      const hitWire = this.findHitWire(world);
+      if (hitWire) {
+        this.selectedNetId = hitWire.net.id;
+        this.selectedInstanceId = null;
+        this.notifySelection();
+        this.render();
+        return;
+      }
       this.selectedInstanceId = null;
       this.selectedNetId = null;
       this.isPanning = true;
       this.panStart = { x: e.clientX - this.transform.x, y: e.clientY - this.transform.y };
+      this.updateCursor();
       this.notifySelection();
       this.render();
     });
@@ -2031,6 +2281,7 @@ var SchematicCanvas = class {
       const rect = this.canvas.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
+      this.mouseScreen = { x: mouseX, y: mouseY };
       const world = this.screenToWorld(mouseX, mouseY);
       if (this.isPanning) {
         this.transform.x = e.clientX - this.panStart.x;
@@ -2041,10 +2292,10 @@ var SchematicCanvas = class {
       if (this.wiringSource) {
         this.wiringCurrent = { x: world.x, y: world.y };
         const allPorts2 = this.getAllPortPositions();
+        const snapRadius = Math.max(13, 14 / this.transform.scale);
         this.hoveredPort = allPorts2.find((p) => {
           if (p.instanceId === this.wiringSource.instanceId) return false;
-          const dist = Math.hypot(p.x - world.x, p.y - world.y);
-          return dist <= 12;
+          return Math.hypot(p.x - world.x, p.y - world.y) <= snapRadius;
         }) || null;
         this.render();
         return;
@@ -2055,23 +2306,54 @@ var SchematicCanvas = class {
         if (inst) {
           const rawX = world.x - this.dragOffset.x;
           const rawY = world.y - this.dragOffset.y;
-          inst.position.x = Math.round(rawX / 20) * 20;
-          inst.position.y = Math.round(rawY / 20) * 20;
+          inst.position.x = this.gridSnap ? Math.round(rawX / GRID_SIZE) * GRID_SIZE : Math.round(rawX);
+          inst.position.y = this.gridSnap ? Math.round(rawY / GRID_SIZE) * GRID_SIZE : Math.round(rawY);
+          this.render();
+        }
+        return;
+      }
+      const insideCanvas = mouseX >= 0 && mouseY >= 0 && mouseX <= rect.width && mouseY <= rect.height;
+      if (!insideCanvas) {
+        if (this.hoveredPort || this.hoveredNetId || this.hoveredInstanceId) {
+          this.hoveredPort = null;
+          this.hoveredNetId = null;
+          this.hoveredInstanceId = null;
+          this.updateCursor();
           this.render();
         }
         return;
       }
       const allPorts = this.getAllPortPositions();
-      const port = allPorts.find((p) => Math.hypot(p.x - world.x, p.y - world.y) <= 10);
-      if (port !== this.hoveredPort) {
-        this.hoveredPort = port || null;
-        this.canvas.style.cursor = port ? "crosshair" : "default";
+      const portRadius = Math.max(10, 11 / this.transform.scale);
+      const port = allPorts.find((p) => Math.hypot(p.x - world.x, p.y - world.y) <= portRadius) || null;
+      let instHover = null;
+      let netHover = null;
+      if (!port) {
+        const hitInst = [...this.design.instances].reverse().find((inst) => {
+          const modDef = (0, import_catalog.getModuleDef)(inst.moduleId);
+          const { w, h } = this.getInstanceDimensions(modDef, inst);
+          return world.x >= inst.position.x && world.x <= inst.position.x + w && world.y >= inst.position.y && world.y <= inst.position.y + h;
+        });
+        if (hitInst) {
+          instHover = hitInst.id;
+        } else {
+          const hitWire = this.findHitWire(world);
+          if (hitWire) netHover = hitWire.net.id;
+        }
+      }
+      const changed = port?.instanceId !== this.hoveredPort?.instanceId || port?.portId !== this.hoveredPort?.portId || instHover !== this.hoveredInstanceId || netHover !== this.hoveredNetId;
+      if (changed) {
+        this.hoveredPort = port;
+        this.hoveredInstanceId = instHover;
+        this.hoveredNetId = netHover;
+        this.updateCursor();
         this.render();
       }
     });
     window.addEventListener("mouseup", () => {
       if (this.isPanning) {
         this.isPanning = false;
+        this.updateCursor();
       }
       if (this.draggingInstanceId) {
         this.draggingInstanceId = null;
@@ -2085,21 +2367,47 @@ var SchematicCanvas = class {
         }
         this.wiringSource = null;
         this.hoveredPort = null;
+        this.updateCursor();
         this.render();
       }
     });
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Delete" || e.key === "Backspace") {
-        const activeTag = document.activeElement?.tagName;
-        if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") return;
+      if (e.code === "Space") {
+        if (!this.spacePressed) {
+          this.spacePressed = true;
+          this.updateCursor();
+        }
+        e.preventDefault();
+      } else if (e.key === "Delete" || e.key === "Backspace") {
         this.deleteSelected();
+      } else if (e.key === "Escape") {
+        if (this.wiringSource) {
+          this.wiringSource = null;
+          this.hoveredPort = null;
+          this.render();
+        } else if (this.selectedInstanceId || this.selectedNetId) {
+          this.selectedInstanceId = null;
+          this.selectedNetId = null;
+          this.notifySelection();
+          this.render();
+        }
+      } else if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey) {
+        this.fitToScreen();
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.code === "Space") {
+        this.spacePressed = false;
+        this.updateCursor();
       }
     });
   }
   completeConnection(src, dst) {
-    let outputPort = src.direction === "output" ? src : dst.direction === "output" ? dst : src;
-    let inputPort = src.direction === "input" ? src : dst.direction === "input" ? dst : dst;
-    let existingNet = this.design.nets.find(
+    const outputPort = src.direction === "output" ? src : dst.direction === "output" ? dst : src;
+    const inputPort = src.direction === "input" ? src : dst.direction === "input" ? dst : dst;
+    const existingNet = this.design.nets.find(
       (n) => n.source?.instanceId === outputPort.instanceId && n.source?.portId === outputPort.portId
     );
     if (existingNet) {
@@ -2109,6 +2417,8 @@ var SchematicCanvas = class {
       if (!alreadyConnected) {
         existingNet.targets.push({ instanceId: inputPort.instanceId, portId: inputPort.portId });
       }
+      this.selectedNetId = existingNet.id;
+      this.selectedInstanceId = null;
     } else {
       const netName = `net_${outputPort.name}_to_${inputPort.name}_${this.design.nets.length + 1}`;
       const newNet = {
@@ -2119,8 +2429,11 @@ var SchematicCanvas = class {
         targets: [{ instanceId: inputPort.instanceId, portId: inputPort.portId }]
       };
       this.design.nets.push(newNet);
+      this.selectedNetId = newNet.id;
+      this.selectedInstanceId = null;
     }
     this.notifyChange();
+    this.notifySelection();
     this.render();
   }
   render() {
@@ -2128,9 +2441,10 @@ var SchematicCanvas = class {
     const dpr = window.devicePixelRatio || 1;
     const w = this.canvas.width / dpr;
     const h = this.canvas.height / dpr;
+    if (w <= 0 || h <= 0) return;
     ctx.save();
     ctx.scale(dpr, dpr);
-    ctx.fillStyle = "#111318";
+    ctx.fillStyle = "#0e1117";
     ctx.fillRect(0, 0, w, h);
     ctx.translate(this.transform.x, this.transform.y);
     ctx.scale(this.transform.scale, this.transform.scale);
@@ -2141,218 +2455,501 @@ var SchematicCanvas = class {
     }
     this.drawInstances(ctx);
     ctx.restore();
+    this.drawOverlayTooltip(ctx, w, h, dpr);
   }
   drawGrid(ctx, screenW, screenH) {
-    const gridSize = 20;
     const start = this.screenToWorld(0, 0);
     const end = this.screenToWorld(screenW, screenH);
-    const minX = Math.floor(start.x / gridSize) * gridSize;
-    const maxX = Math.ceil(end.x / gridSize) * gridSize;
-    const minY = Math.floor(start.y / gridSize) * gridSize;
-    const maxY = Math.ceil(end.y / gridSize) * gridSize;
-    ctx.fillStyle = "#272c38";
-    for (let x = minX; x <= maxX; x += gridSize) {
-      for (let y = minY; y <= maxY; y += gridSize) {
-        ctx.fillRect(x - 1, y - 1, 2, 2);
+    const showMinor = this.transform.scale >= 0.45;
+    const step = showMinor ? GRID_SIZE : GRID_SIZE * 5;
+    const minX = Math.floor(start.x / step) * step;
+    const maxX = Math.ceil(end.x / step) * step;
+    const minY = Math.floor(start.y / step) * step;
+    const maxY = Math.ceil(end.y / step) * step;
+    for (let x = minX; x <= maxX; x += step) {
+      for (let y = minY; y <= maxY; y += step) {
+        const isMajor = x % 100 === 0 && y % 100 === 0;
+        ctx.fillStyle = isMajor ? "#303746" : "#1d222d";
+        const size = isMajor ? 2.5 : 1.5;
+        ctx.fillRect(x - size / 2, y - size / 2, size, size);
       }
     }
   }
-  drawNets(ctx) {
-    const portMap = /* @__PURE__ */ new Map();
-    for (const p of this.getAllPortPositions()) {
-      portMap.set(`${p.instanceId}:${p.portId}`, p);
+  getDrcLookups() {
+    const errorInst = /* @__PURE__ */ new Set();
+    const warnInst = /* @__PURE__ */ new Set();
+    const errorNet = /* @__PURE__ */ new Set();
+    const warnNet = /* @__PURE__ */ new Set();
+    const errorPorts = /* @__PURE__ */ new Set();
+    const warnPorts = /* @__PURE__ */ new Set();
+    for (const d of this.diagnostics) {
+      if (d.severity === "error") {
+        if (d.instanceId) errorInst.add(d.instanceId);
+        if (d.netId) errorNet.add(d.netId);
+        if (d.instanceId && d.portId) errorPorts.add(`${d.instanceId}:${d.portId}`);
+      } else if (d.severity === "warning") {
+        if (d.instanceId) warnInst.add(d.instanceId);
+        if (d.netId) warnNet.add(d.netId);
+        if (d.instanceId && d.portId) warnPorts.add(`${d.instanceId}:${d.portId}`);
+      }
     }
+    return { errorInst, warnInst, errorNet, warnNet, errorPorts, warnPorts };
+  }
+  getInstanceBoxes() {
+    const map = /* @__PURE__ */ new Map();
+    for (const inst of this.design.instances) {
+      const modDef = (0, import_catalog.getModuleDef)(inst.moduleId);
+      const { w, h } = this.getInstanceDimensions(modDef, inst);
+      map.set(inst.id, { x: inst.position.x, y: inst.position.y, w, h });
+    }
+    return map;
+  }
+  drawNets(ctx) {
+    const portMap = this.buildPortMap();
+    const boxMap = this.getInstanceBoxes();
+    const drc = this.getDrcLookups();
+    this.renderedWires = [];
+    const placedPills = [];
+    const pairCounters = /* @__PURE__ */ new Map();
+    const pairTotals = /* @__PURE__ */ new Map();
     for (const net of this.design.nets) {
+      if (!net.source) continue;
+      for (const tgt of net.targets) {
+        const key = `${net.source.instanceId}->${tgt.instanceId}`;
+        pairTotals.set(key, (pairTotals.get(key) || 0) + 1);
+      }
+    }
+    const orderedNets = [...this.design.nets].sort((a, b) => {
+      const aActive = a.id === this.selectedNetId || a.id === this.hoveredNetId ? 1 : 0;
+      const bActive = b.id === this.selectedNetId || b.id === this.hoveredNetId ? 1 : 0;
+      return aActive - bActive;
+    });
+    for (const net of orderedNets) {
       const srcPos = net.source ? portMap.get(`${net.source.instanceId}:${net.source.portId}`) : null;
       if (!srcPos) continue;
       const isSelected = this.selectedNetId === net.id;
+      const isHovered = this.hoveredNetId === net.id;
+      const hasError = drc.errorNet.has(net.id);
+      const hasWarn = drc.warnNet.has(net.id);
       const isBus = net.width > 1;
+      const isClockOrReset = srcPos.type === "clock" || srcPos.type === "reset";
       for (const tgt of net.targets) {
         const tgtPos = portMap.get(`${tgt.instanceId}:${tgt.portId}`);
         if (!tgtPos) continue;
-        this.drawOrthogonalWire(ctx, srcPos, tgtPos, isBus, isSelected, net.width);
+        const key = `${srcPos.instanceId}->${tgtPos.instanceId}`;
+        const laneIdx = pairCounters.get(key) || 0;
+        pairCounters.set(key, laneIdx + 1);
+        const totalLanes = pairTotals.get(key) || 1;
+        const srcBox = boxMap.get(srcPos.instanceId);
+        const tgtBox = boxMap.get(tgtPos.instanceId);
+        const points = this.computeWirePoints(srcPos, tgtPos, laneIdx, totalLanes, srcBox, tgtBox);
+        this.renderedWires.push({ net, points, src: srcPos, tgt: tgtPos });
+        this.drawOrthogonalWire(
+          ctx,
+          points,
+          srcPos,
+          isBus,
+          isClockOrReset,
+          isSelected,
+          isHovered,
+          hasError,
+          hasWarn,
+          net.width,
+          placedPills
+        );
       }
     }
   }
-  drawOrthogonalWire(ctx, src, tgt, isBus, isSelected, width) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(src.x, src.y);
-    const midX = (src.x + tgt.x) / 2;
-    ctx.lineTo(midX, src.y);
-    ctx.lineTo(midX, tgt.y);
-    ctx.lineTo(tgt.x, tgt.y);
-    if (isSelected) {
-      ctx.shadowColor = "#a8c7fa";
-      ctx.shadowBlur = 12;
-      ctx.strokeStyle = "#a8c7fa";
-      ctx.lineWidth = isBus ? 4.5 : 3;
-    } else {
-      ctx.strokeStyle = isBus ? "#7fcfff" : "#8e919a";
-      ctx.lineWidth = isBus ? 3 : 1.75;
+  computeWirePoints(src, tgt, laneIdx, totalLanes, srcBox, tgtBox) {
+    const laneShift = (laneIdx - (totalLanes - 1) / 2) * 14;
+    if (src.direction === "inout" || tgt.direction === "inout") {
+      const dropY = Math.max(src.y, tgt.y) + 28 + laneIdx * 10;
+      return [
+        { x: src.x, y: src.y },
+        { x: src.x, y: dropY },
+        { x: tgt.x, y: dropY },
+        { x: tgt.x, y: tgt.y }
+      ];
     }
+    if (tgt.x >= src.x + 32) {
+      const rawMid = (src.x + tgt.x) / 2 + laneShift;
+      const midX = Math.max(src.x + 16, Math.min(tgt.x - 16, rawMid));
+      return [
+        { x: src.x, y: src.y },
+        { x: midX, y: src.y },
+        { x: midX, y: tgt.y },
+        { x: tgt.x, y: tgt.y }
+      ];
+    }
+    const stubOut = 22 + laneIdx % 4 * 10;
+    const stubIn = 22 + laneIdx % 4 * 10;
+    const exitX = src.x + stubOut;
+    const entryX = tgt.x - stubIn;
+    const topBound = Math.min(srcBox ? srcBox.y : src.y, tgtBox ? tgtBox.y : tgt.y);
+    const botBound = Math.max(srcBox ? srcBox.y + srcBox.h : src.y, tgtBox ? tgtBox.y + tgtBox.h : tgt.y);
+    const avgY = (src.y + tgt.y) / 2;
+    const goAbove = Math.abs(avgY - topBound) <= Math.abs(botBound - avgY);
+    const detourY = goAbove ? topBound - 24 - laneIdx * 12 : botBound + 24 + laneIdx * 12;
+    return [
+      { x: src.x, y: src.y },
+      { x: exitX, y: src.y },
+      { x: exitX, y: detourY },
+      { x: entryX, y: detourY },
+      { x: entryX, y: tgt.y },
+      { x: tgt.x, y: tgt.y }
+    ];
+  }
+  drawOrthogonalWire(ctx, points, src, isBus, isClockOrReset, isSelected, isHovered, hasError, hasWarn, width, placedPills) {
+    ctx.save();
+    let strokeColor = isBus ? "#7fcfff" : "#8e919a";
+    if (src.type === "clock") strokeColor = "#b49df2";
+    else if (src.type === "reset") strokeColor = "#e3b341";
+    if (hasError) strokeColor = "#f2b8b5";
+    else if (hasWarn) strokeColor = "#fbc02d";
+    if (isHovered) strokeColor = "#d3e3fd";
+    if (isSelected) strokeColor = "#a8c7fa";
+    if (isClockOrReset && !isSelected && !isHovered && !hasError) {
+      ctx.globalAlpha = 0.65;
+      ctx.setLineDash([5, 4]);
+    }
+    if (isSelected || isHovered || hasError) {
+      ctx.shadowColor = hasError ? "#f2b8b5" : "#a8c7fa";
+      ctx.shadowBlur = isSelected ? 12 : 8;
+    }
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = isSelected || isHovered ? isBus ? 4.2 : 2.8 : isBus ? 3 : 1.75;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
+    this.traceRoundedPolyline(ctx, points, 6);
     ctx.stroke();
-    if (isBus) {
-      const slashX = midX;
-      const slashY = (src.y + tgt.y) / 2;
-      ctx.beginPath();
-      ctx.moveTo(slashX - 4, slashY + 5);
-      ctx.lineTo(slashX + 4, slashY - 5);
-      ctx.strokeStyle = "#7fcfff";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    if (isBus && points.length >= 4) {
+      const segIdx = points.length === 4 ? 1 : 2;
+      const pA = points[segIdx];
+      const pB = points[segIdx + 1];
+      let anchorX = (pA.x + pB.x) / 2;
+      let anchorY = (pA.y + pB.y) / 2;
       const widthLabel = `[${width - 1}:0]`;
-      ctx.font = '9px "Roboto Mono", monospace';
+      ctx.font = '600 9px "Roboto Mono", monospace';
       const textWidth = ctx.measureText(widthLabel).width;
-      const pillW = textWidth + 8;
-      const pillH = 14;
-      ctx.fillStyle = "#0842a0";
-      ctx.strokeStyle = "#7fcfff";
+      const pillW = textWidth + 10;
+      const pillH = 15;
+      let pillX = anchorX - pillW / 2;
+      let pillY = anchorY - pillH / 2;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const candidate = { x: pillX, y: pillY, w: pillW, h: pillH };
+        const collides = placedPills.some((b) => boxesOverlap(b, candidate, 3));
+        if (!collides) break;
+        const dir = attempt % 2 === 0 ? 1 : -1;
+        const step = Math.ceil((attempt + 1) / 2) * 18;
+        pillY = anchorY - pillH / 2 + dir * step;
+      }
+      placedPills.push({ x: pillX, y: pillY, w: pillW, h: pillH });
+      ctx.fillStyle = hasError ? "#8c1d18" : isSelected ? "#0b57d0" : "#0b2c5e";
+      ctx.strokeStyle = hasError ? "#f2b8b5" : isSelected ? "#d3e3fd" : "#7fcfff";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(slashX + 7, slashY - 8, pillW, pillH, 5);
+      ctx.roundRect(pillX, pillY, pillW, pillH, 5);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = "#d3e3fd";
-      ctx.fillText(widthLabel, slashX + 11, slashY + 3);
+      ctx.fillStyle = hasError ? "#f9dedc" : "#e3f2fd";
+      ctx.textAlign = "center";
+      ctx.fillText(widthLabel, pillX + pillW / 2, pillY + 10.5);
     }
     ctx.restore();
   }
-  drawRubberBandWire(ctx, src, current, targetPort) {
-    ctx.save();
+  traceRoundedPolyline(ctx, points, radius) {
+    if (points.length === 0) return;
     ctx.beginPath();
-    ctx.moveTo(src.x, src.y);
-    const midX = (src.x + current.x) / 2;
-    ctx.lineTo(midX, src.y);
-    ctx.lineTo(midX, current.y);
-    ctx.lineTo(current.x, current.y);
+    ctx.moveTo(points[0].x, points[0].y);
+    if (typeof ctx.quadraticCurveTo !== "function" || points.length < 3) {
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      return;
+    }
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const next = points[i + 1];
+      const d1 = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+      const d2 = Math.hypot(next.x - curr.x, next.y - curr.y);
+      const r = Math.min(radius, d1 / 2, d2 / 2);
+      if (r < 1) {
+        ctx.lineTo(curr.x, curr.y);
+        continue;
+      }
+      const ux1 = (curr.x - prev.x) / d1;
+      const uy1 = (curr.y - prev.y) / d1;
+      const ux2 = (next.x - curr.x) / d2;
+      const uy2 = (next.y - curr.y) / d2;
+      ctx.lineTo(curr.x - ux1 * r, curr.y - uy1 * r);
+      ctx.quadraticCurveTo(curr.x, curr.y, curr.x + ux2 * r, curr.y + uy2 * r);
+    }
+    const last = points[points.length - 1];
+    ctx.lineTo(last.x, last.y);
+  }
+  drawRubberBandWire(ctx, src, current, targetPort) {
+    const end = targetPort ? { x: targetPort.x, y: targetPort.y } : current;
+    const midX = (src.x + end.x) / 2;
+    const pts = [
+      { x: src.x, y: src.y },
+      { x: midX, y: src.y },
+      { x: midX, y: end.y },
+      end
+    ];
+    ctx.save();
     let color = "#a8c7fa";
     if (targetPort) {
       color = targetPort.width === src.width ? "#6dd58c" : "#f2b8b5";
     }
     ctx.strokeStyle = color;
     ctx.lineWidth = 2.5;
-    ctx.setLineDash([4, 4]);
+    ctx.setLineDash([5, 4]);
+    this.traceRoundedPolyline(ctx, pts, 6);
     ctx.stroke();
+    if (targetPort) {
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(targetPort.x, targetPort.y, 9, 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
     ctx.restore();
   }
   drawInstances(ctx) {
+    const drc = this.getDrcLookups();
     for (const inst of this.design.instances) {
       const modDef = (0, import_catalog.getModuleDef)(inst.moduleId);
       const isSelected = this.selectedInstanceId === inst.id;
-      const w = modDef?.defaultWidth || 200;
-      const h = modDef?.defaultHeight || 200;
+      const isHovered = this.hoveredInstanceId === inst.id;
+      const hasErr = drc.errorInst.has(inst.id);
+      const hasWarn = drc.warnInst.has(inst.id);
+      const { w, h } = this.getInstanceDimensions(modDef, inst);
       ctx.save();
-      ctx.shadowColor = isSelected ? "rgba(168, 199, 250, 0.4)" : "rgba(0, 0, 0, 0.45)";
-      ctx.shadowBlur = isSelected ? 18 : 8;
-      ctx.shadowOffsetY = 4;
-      ctx.fillStyle = "#1a1d26";
+      if (isSelected) {
+        ctx.shadowColor = "rgba(168, 199, 250, 0.45)";
+        ctx.shadowBlur = 20;
+        ctx.shadowOffsetY = 2;
+      } else if (hasErr) {
+        ctx.shadowColor = "rgba(242, 184, 181, 0.35)";
+        ctx.shadowBlur = 14;
+      } else {
+        ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 4;
+      }
+      ctx.fillStyle = isSelected ? "#1d222e" : isHovered ? "#1c202a" : "#171a23";
       ctx.beginPath();
       ctx.roundRect(inst.position.x, inst.position.y, w, h, 12);
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = isSelected ? "#a8c7fa" : "#272c38";
-      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = isSelected ? "#a8c7fa" : hasErr ? "#f2b8b5" : hasWarn ? "#fbc02d" : isHovered ? "#5a6070" : "#2b3140";
+      ctx.lineWidth = isSelected || hasErr ? 2 : 1.25;
       ctx.stroke();
       ctx.fillStyle = this.getCategoryColor(modDef?.category || "infrastructure");
       ctx.beginPath();
-      ctx.roundRect(inst.position.x, inst.position.y, w, 32, [12, 12, 0, 0]);
+      ctx.roundRect(inst.position.x, inst.position.y, w, HEADER_HEIGHT, [12, 12, 0, 0]);
       ctx.fill();
-      ctx.fillStyle = "#ffffff";
-      ctx.font = 'bold 13px "Google Sans", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-      ctx.fillText(inst.name, inst.position.x + 12, inst.position.y + 20);
+      let catW = 0;
       if (modDef?.category) {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
         const catText = modDef.category.toUpperCase();
-        ctx.font = 'bold 8px "Google Sans", "Roboto", sans-serif';
-        const catW = ctx.measureText(catText).width;
+        ctx.font = '700 8px "Google Sans", "Roboto", sans-serif';
+        catW = ctx.measureText(catText).width + 12;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
         ctx.beginPath();
-        ctx.roundRect(inst.position.x + w - catW - 16, inst.position.y + 8, catW + 10, 16, 6);
+        ctx.roundRect(inst.position.x + w - catW - 10, inst.position.y + 9, catW, 16, 6);
         ctx.fill();
         ctx.fillStyle = "#ffffff";
-        ctx.fillText(catText, inst.position.x + w - catW - 11, inst.position.y + 19);
+        ctx.textAlign = "center";
+        ctx.fillText(catText, inst.position.x + w - 10 - catW / 2, inst.position.y + 20);
       }
-      ctx.fillStyle = "#8e919a";
-      ctx.font = '10px "Roboto Mono", monospace';
-      ctx.fillText(modDef?.name || inst.moduleId, inst.position.x + 12, inst.position.y + 48);
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "left";
+      ctx.font = '700 13px "Google Sans", "Roboto", sans-serif';
+      const maxTitleW = w - catW - 30;
+      const titleText = truncateText(ctx, inst.name, maxTitleW);
+      ctx.fillText(titleText, inst.position.x + 12, inst.position.y + 22);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.025)";
+      ctx.fillRect(inst.position.x + 1, inst.position.y + HEADER_HEIGHT, w - 2, SUBTITLE_HEIGHT);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(inst.position.x + 1, inst.position.y + TOP_RESERVED);
+      ctx.lineTo(inst.position.x + w - 1, inst.position.y + TOP_RESERVED);
+      ctx.stroke();
+      ctx.fillStyle = "#9aa0ae";
+      ctx.font = '500 10px "Roboto Mono", monospace';
+      const subText = truncateText(ctx, modDef?.name || inst.moduleId, w - 24);
+      ctx.fillText(subText, inst.position.x + 12, inst.position.y + HEADER_HEIGHT + 14);
+      if (hasErr || hasWarn) {
+        const badgeX = inst.position.x + w - 4;
+        const badgeY = inst.position.y - 2;
+        ctx.beginPath();
+        ctx.arc(badgeX, badgeY, 8, 0, Math.PI * 2);
+        ctx.fillStyle = hasErr ? "#f2b8b5" : "#fbc02d";
+        ctx.fill();
+        ctx.fillStyle = hasErr ? "#601410" : "#412d00";
+        ctx.font = '700 10px "Google Sans", sans-serif';
+        ctx.textAlign = "center";
+        ctx.fillText("!", badgeX, badgeY + 3.5);
+      }
       if (modDef) {
         const inputPorts = modDef.ports.filter((p) => p.direction === "input");
         const outputPorts = modDef.ports.filter((p) => p.direction === "output");
         const inoutPorts = modDef.ports.filter((p) => p.direction === "inout");
-        const inSpacing = h / (inputPorts.length + 1);
+        const portAreaTop = inst.position.y + TOP_RESERVED + 6;
+        const portAreaBottom = inst.position.y + h - (inoutPorts.length > 0 ? 24 : 10);
+        const portAreaH = Math.max(24, portAreaBottom - portAreaTop);
+        const inSpacing = portAreaH / (inputPorts.length + 1);
         inputPorts.forEach((p, idx) => {
-          const effectiveWidth = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
+          const ew = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
           const px = inst.position.x;
-          const py = inst.position.y + inSpacing * (idx + 1);
-          this.drawPortPin(ctx, px, py, p, effectiveWidth, "left");
+          const py = portAreaTop + inSpacing * (idx + 1);
+          const portKey = `${inst.id}:${p.id}`;
+          this.drawPortPin(ctx, inst.id, px, py, p, ew, "left", drc.errorPorts.has(portKey), drc.warnPorts.has(portKey));
         });
-        const outSpacing = h / (outputPorts.length + 1);
+        const outSpacing = portAreaH / (outputPorts.length + 1);
         outputPorts.forEach((p, idx) => {
-          const effectiveWidth = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
+          const ew = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
           const px = inst.position.x + w;
-          const py = inst.position.y + outSpacing * (idx + 1);
-          this.drawPortPin(ctx, px, py, p, effectiveWidth, "right");
+          const py = portAreaTop + outSpacing * (idx + 1);
+          const portKey = `${inst.id}:${p.id}`;
+          this.drawPortPin(ctx, inst.id, px, py, p, ew, "right", drc.errorPorts.has(portKey), drc.warnPorts.has(portKey));
         });
         const inoutSpacing = w / (inoutPorts.length + 1);
         inoutPorts.forEach((p, idx) => {
-          const effectiveWidth = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
+          const ew = (0, import_drc.getEffectivePortWidth)(modDef, p, inst);
           const px = inst.position.x + inoutSpacing * (idx + 1);
           const py = inst.position.y + h;
-          this.drawPortPin(ctx, px, py, p, effectiveWidth, "bottom");
+          const portKey = `${inst.id}:${p.id}`;
+          this.drawPortPin(ctx, inst.id, px, py, p, ew, "bottom", drc.errorPorts.has(portKey), drc.warnPorts.has(portKey));
         });
       }
       ctx.restore();
     }
   }
-  drawPortPin(ctx, x, y, port, width, align) {
+  drawPortPin(ctx, instanceId, x, y, port, width, align, hasError, hasWarn) {
     const isBus = width > 1;
-    const isHovered = this.hoveredPort?.portId === port.id && this.hoveredPort?.x === x && this.hoveredPort?.y === y;
-    if (isHovered) {
+    const isHovered = this.hoveredPort?.instanceId === instanceId && this.hoveredPort?.portId === port.id;
+    const isWireTargetCompatible = this.wiringSource && this.wiringSource.instanceId !== instanceId && isHovered && this.wiringSource.width === width;
+    if (isHovered || hasError || hasWarn) {
       ctx.beginPath();
-      ctx.arc(x, y, 10, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(168, 199, 250, 0.25)";
+      ctx.arc(x, y, isHovered ? 10 : 7, 0, Math.PI * 2);
+      ctx.fillStyle = hasError ? "rgba(242, 184, 181, 0.3)" : hasWarn ? "rgba(251, 192, 45, 0.25)" : isWireTargetCompatible ? "rgba(109, 213, 140, 0.35)" : "rgba(168, 199, 250, 0.28)";
       ctx.fill();
     }
     ctx.beginPath();
-    ctx.arc(x, y, isBus ? 5 : 4, 0, Math.PI * 2);
+    ctx.arc(x, y, isHovered ? 5.5 : isBus ? 4.8 : 4, 0, Math.PI * 2);
     ctx.fillStyle = this.getPortTypeColor(port.type);
     ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = isBus ? 1.5 : 1;
+    ctx.strokeStyle = hasError ? "#f2b8b5" : hasWarn ? "#fbc02d" : "#ffffff";
+    ctx.lineWidth = isBus || isHovered ? 1.6 : 1.1;
     ctx.stroke();
-    ctx.fillStyle = "#c4c6d0";
-    ctx.font = '11px "Roboto Mono", monospace';
-    const label = isBus ? `${port.name}[${width - 1}:0]` : port.name;
+    const widthSuffix = isBus ? `[${width - 1}:0]` : "";
+    ctx.font = '500 11px "Roboto Mono", monospace';
     if (align === "left") {
       ctx.textAlign = "left";
-      ctx.fillText(label, x + 8, y + 4);
+      ctx.fillStyle = isHovered ? "#ffffff" : "#d2d5df";
+      ctx.fillText(port.name, x + 9, y + 3.5);
+      if (widthSuffix) {
+        const nameW = ctx.measureText(port.name).width;
+        ctx.fillStyle = "#7fcfff";
+        ctx.font = '500 10px "Roboto Mono", monospace';
+        ctx.fillText(widthSuffix, x + 9 + nameW + 2, y + 3.5);
+      }
     } else if (align === "right") {
       ctx.textAlign = "right";
-      ctx.fillText(label, x - 8, y + 4);
+      if (widthSuffix) {
+        ctx.font = '500 10px "Roboto Mono", monospace';
+        const suffixW = ctx.measureText(widthSuffix).width;
+        ctx.fillStyle = "#7fcfff";
+        ctx.fillText(widthSuffix, x - 9, y + 3.5);
+        ctx.font = '500 11px "Roboto Mono", monospace';
+        ctx.fillStyle = isHovered ? "#ffffff" : "#d2d5df";
+        ctx.fillText(port.name, x - 9 - suffixW - 2, y + 3.5);
+      } else {
+        ctx.fillStyle = isHovered ? "#ffffff" : "#d2d5df";
+        ctx.fillText(port.name, x - 9, y + 3.5);
+      }
     } else {
       ctx.textAlign = "center";
-      ctx.fillText(label, x, y - 8);
+      ctx.fillStyle = isHovered ? "#ffffff" : "#d2d5df";
+      ctx.fillText(widthSuffix ? `${port.name}${widthSuffix}` : port.name, x, y - 9);
     }
+  }
+  drawOverlayTooltip(ctx, viewW, viewH, dpr) {
+    let title = "";
+    let sub = "";
+    let accent = "#a8c7fa";
+    if (this.wiringSource && this.hoveredPort) {
+      const compat = this.wiringSource.width === this.hoveredPort.width;
+      title = compat ? `Connect ${this.wiringSource.name} \u2192 ${this.hoveredPort.name}` : `Width Mismatch: [${this.wiringSource.width - 1}:0] \u2260 [${this.hoveredPort.width - 1}:0]`;
+      sub = compat ? `${this.hoveredPort.width}-bit ${this.hoveredPort.type}` : "DRC will flag width mismatch";
+      accent = compat ? "#6dd58c" : "#f2b8b5";
+    } else if (this.hoveredPort) {
+      const p = this.hoveredPort;
+      title = `${p.name}${p.width > 1 ? ` [${p.width - 1}:0]` : " (1-bit)"}`;
+      sub = `${p.direction.toUpperCase()} \u2022 ${p.type}${p.description ? ` \u2014 ${p.description}` : ""}`;
+      accent = this.getPortTypeColor(p.type);
+    } else if (this.hoveredNetId && !this.draggingInstanceId && !this.isPanning) {
+      const net = this.design.nets.find((n) => n.id === this.hoveredNetId);
+      if (net) {
+        title = `${net.name} ${net.width > 1 ? `[${net.width - 1}:0]` : "(1-bit)"}`;
+        sub = `Click to inspect or Delete to remove`;
+        accent = "#7fcfff";
+      }
+    }
+    if (!title) return;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.font = '600 11.5px "Google Sans", "Roboto", sans-serif';
+    const titleW = ctx.measureText(title).width;
+    ctx.font = '400 10.5px "Roboto", sans-serif';
+    const subW = ctx.measureText(sub).width;
+    const boxW = Math.min(340, Math.max(titleW, subW) + 28);
+    const boxH = 44;
+    let tx = this.mouseScreen.x + 14;
+    let ty = this.mouseScreen.y + 16;
+    if (tx + boxW > viewW - 12) tx = Math.max(12, this.mouseScreen.x - boxW - 12);
+    if (ty + boxH > viewH - 12) ty = Math.max(12, this.mouseScreen.y - boxH - 12);
+    ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = "rgba(26, 29, 38, 0.96)";
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(tx, ty, boxW, boxH, 8);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.fillRect(tx + 1, ty + 8, 3, boxH - 16);
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#e2e2e9";
+    ctx.font = '600 11.5px "Google Sans", "Roboto", sans-serif';
+    ctx.fillText(truncateText(ctx, title, boxW - 20), tx + 12, ty + 18);
+    ctx.fillStyle = "#9aa0ae";
+    ctx.font = '400 10.5px "Roboto", sans-serif';
+    ctx.fillText(truncateText(ctx, sub, boxW - 20), tx + 12, ty + 34);
+    ctx.restore();
   }
   getCategoryColor(category) {
     switch (category) {
       case "processor":
         return "#0842a0";
-      // Primary Container
       case "interconnect":
         return "#4f378b";
-      // Tertiary Container
       case "memory":
-        return "#601410";
-      // Dark Crimson Container
+        return "#6e1914";
       case "peripheral":
         return "#004d67";
-      // Secondary Container
       case "infrastructure":
         return "#0a5223";
-      // Success Container
       default:
         return "#272c38";
     }
@@ -2361,21 +2958,39 @@ var SchematicCanvas = class {
     switch (type) {
       case "clock":
         return "#d0bcff";
-      // Tertiary
       case "reset":
         return "#fbc02d";
-      // Warning
       case "bus":
         return "#7fcfff";
-      // Secondary
       case "data":
         return "#6dd58c";
-      // Success
       default:
         return "#8e919a";
     }
   }
 };
+function distPointToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  const projX = ax + t * dx;
+  const projY = ay + t * dy;
+  return Math.hypot(px - projX, py - projY);
+}
+function boxesOverlap(a, b, pad = 0) {
+  return !(a.x + a.w + pad <= b.x || b.x + b.w + pad <= a.x || a.y + a.h + pad <= b.y || b.y + b.h + pad <= a.y);
+}
+function truncateText(ctx, text, maxWidth) {
+  if (maxWidth <= 20) return text;
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let truncated = text;
+  while (truncated.length > 3 && ctx.measureText(truncated + "\u2026").width > maxWidth) {
+    truncated = truncated.slice(0, -1);
+  }
+  return truncated + "\u2026";
+}
 
 // apps/web/src/waveform.ts
 var import_vcd = __toESM(require_vcd());
@@ -2386,8 +3001,11 @@ var WaveformViewer = class {
   trace = null;
   radix = "hex";
   zoom = 1;
-  panOffset = 0;
+  panOffset = 20;
   cursorTime = null;
+  needsFit = false;
+  isScrubbing = false;
+  resizeObserver = null;
   constructor(container) {
     this.container = container;
     this.container.innerHTML = `
@@ -2399,13 +3017,14 @@ var WaveformViewer = class {
             <button class="wf-btn" id="wf-zoom-reset" title="Fit Timeline">Fit</button>
           </div>
           <div class="wf-radix-picker">
-            <label>Radix:</label>
+            <label for="wf-radix-select">Radix:</label>
             <select id="wf-radix-select" class="wf-select">
               <option value="hex" selected>Hex</option>
               <option value="dec">Dec</option>
               <option value="bin">Bin</option>
             </select>
           </div>
+          <span class="wf-hint">Click or drag timeline to scrub cursor &bull; Scroll to zoom</span>
           <div class="wf-cursor-info" id="wf-cursor-val">Cursor: None</div>
         </div>
         <div class="waveform-body">
@@ -2423,11 +3042,23 @@ var WaveformViewer = class {
     if (!ctx) throw new Error("Could not get waveform canvas context");
     this.ctx = ctx;
     this.setupEvents();
+    this.setupResizeObserver();
     this.resize();
+  }
+  setupResizeObserver() {
+    const wrap = this.canvas.parentElement;
+    if (wrap && typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.resize();
+      });
+      this.resizeObserver.observe(wrap);
+    }
   }
   setTrace(trace) {
     this.trace = trace;
     this.cursorTime = 0;
+    this.needsFit = true;
+    this.updateSidebar();
     this.fitTimeline();
     this.render();
   }
@@ -2439,19 +3070,39 @@ var WaveformViewer = class {
     const wrap = this.canvas.parentElement;
     if (!wrap) return;
     const rect = wrap.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.floor(rect.width * dpr);
     this.canvas.height = Math.floor(rect.height * dpr);
     this.canvas.style.width = `${rect.width}px`;
     this.canvas.style.height = `${rect.height}px`;
+    this.ctx.resetTransform?.();
+    if (this.needsFit && this.trace) {
+      this.fitTimeline();
+    }
     this.render();
   }
   fitTimeline() {
     if (!this.trace || this.trace.maxTime <= 0) return;
     const wrap = this.canvas.parentElement;
-    const clientW = wrap?.clientWidth || 600;
-    this.zoom = (clientW - 60) / this.trace.maxTime;
+    const rectW = wrap?.getBoundingClientRect().width || wrap?.clientWidth || 0;
+    if (rectW <= 40) {
+      this.needsFit = true;
+      this.zoom = Math.max(2, 540 / this.trace.maxTime);
+      this.panOffset = 20;
+      return;
+    }
+    this.zoom = Math.max(0.5, (rectW - 48) / this.trace.maxTime);
     this.panOffset = 20;
+    this.needsFit = false;
+  }
+  updateCursorFromClientX(clientX) {
+    if (!this.trace) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const clickX = clientX - rect.left;
+    const time = Math.round((clickX - this.panOffset) / this.zoom);
+    this.cursorTime = Math.max(0, Math.min(this.trace.maxTime, time));
+    this.render();
   }
   setupEvents() {
     this.container.querySelector("#wf-zoom-in")?.addEventListener("click", () => {
@@ -2459,7 +3110,7 @@ var WaveformViewer = class {
       this.render();
     });
     this.container.querySelector("#wf-zoom-out")?.addEventListener("click", () => {
-      this.zoom = Math.max(0.1, this.zoom / 1.25);
+      this.zoom = Math.max(0.2, this.zoom / 1.25);
       this.render();
     });
     this.container.querySelector("#wf-zoom-reset")?.addEventListener("click", () => {
@@ -2470,36 +3121,55 @@ var WaveformViewer = class {
     radixSelect?.addEventListener("change", () => {
       this.setRadix(radixSelect.value);
     });
-    this.canvas.addEventListener("click", (e) => {
+    this.canvas.addEventListener("mousedown", (e) => {
       if (!this.trace) return;
-      const rect = this.canvas.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const time = Math.round((clickX - this.panOffset) / this.zoom);
-      this.cursorTime = Math.max(0, Math.min(this.trace.maxTime, time));
-      this.render();
+      this.isScrubbing = true;
+      this.updateCursorFromClientX(e.clientX);
     });
+    window.addEventListener("mousemove", (e) => {
+      if (!this.isScrubbing || !this.trace) return;
+      this.updateCursorFromClientX(e.clientX);
+    });
+    window.addEventListener("mouseup", () => {
+      this.isScrubbing = false;
+    });
+    this.canvas.addEventListener("wheel", (e) => {
+      if (!this.trace) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      this.zoom = Math.max(0.2, Math.min(40, this.zoom * factor));
+      this.render();
+    }, { passive: false });
     window.addEventListener("resize", () => this.resize());
   }
   render() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = this.canvas.width / dpr || this.canvas.clientWidth || 600;
+    const h = this.canvas.height / dpr || this.canvas.clientHeight || 200;
     if (!this.trace) {
-      this.ctx.fillStyle = "#111318";
-      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.save();
+      this.ctx.scale(dpr, dpr);
+      this.ctx.fillStyle = "#0e1117";
+      this.ctx.fillRect(0, 0, w, h);
       this.ctx.fillStyle = "#8e919a";
       this.ctx.font = '13px "Google Sans", "Roboto", sans-serif';
-      this.ctx.fillText('No simulation trace loaded. Click "Run Simulation" above to execute Wasm simulation.', 24, 40);
+      this.ctx.textAlign = "center";
+      this.ctx.fillText(
+        'No simulation trace loaded. Click "Run Simulation" above to inspect live waveforms.',
+        w / 2,
+        Math.max(48, h / 2)
+      );
+      this.ctx.restore();
       return;
     }
-    const dpr = window.devicePixelRatio || 1;
-    const w = this.canvas.width / dpr;
-    const h = this.canvas.height / dpr;
     const rowHeight = 36;
     const headerHeight = 28;
     this.ctx.save();
     this.ctx.scale(dpr, dpr);
-    this.ctx.fillStyle = "#111318";
+    this.ctx.fillStyle = "#0e1117";
     this.ctx.fillRect(0, 0, w, h);
     this.updateSidebar();
-    this.drawTimelineHeader(w, headerHeight);
+    this.drawTimelineHeader(w, headerHeight, h);
     let y = headerHeight;
     for (const sig of this.trace.signals) {
       const changes = this.trace.signalChanges.get(sig.name) || [];
@@ -2521,7 +3191,7 @@ var WaveformViewer = class {
     }
     this.ctx.restore();
   }
-  drawTimelineHeader(w, headerH) {
+  drawTimelineHeader(w, headerH, totalH) {
     this.ctx.fillStyle = "#1a1d26";
     this.ctx.fillRect(0, 0, w, headerH);
     this.ctx.strokeStyle = "#44474f";
@@ -2531,12 +3201,19 @@ var WaveformViewer = class {
     this.ctx.stroke();
     if (!this.trace) return;
     const maxT = this.trace.maxTime || 100;
-    const tickStep = Math.max(5, Math.pow(10, Math.floor(Math.log10(maxT / 5))));
+    const rawStep = Math.max(5, Math.pow(10, Math.floor(Math.log10(maxT / 5))));
+    const tickStep = rawStep * this.zoom < 40 ? rawStep * 2 : rawStep;
     this.ctx.fillStyle = "#8e919a";
     this.ctx.font = '10px "Roboto Mono", monospace';
+    this.ctx.textAlign = "left";
     for (let t = 0; t <= maxT; t += tickStep) {
       const x = this.panOffset + t * this.zoom;
       if (x < 0 || x > w) continue;
+      this.ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+      this.ctx.beginPath();
+      this.ctx.moveTo(x, headerH);
+      this.ctx.lineTo(x, totalH);
+      this.ctx.stroke();
       this.ctx.beginPath();
       this.ctx.moveTo(x, headerH - 6);
       this.ctx.lineTo(x, headerH);
@@ -2546,7 +3223,7 @@ var WaveformViewer = class {
     }
   }
   drawSignalRow(y, rowH, width, changes, canvasW) {
-    this.ctx.strokeStyle = "#20242f";
+    this.ctx.strokeStyle = "#1e232e";
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
     this.ctx.moveTo(0, y + rowH);
@@ -2556,10 +3233,9 @@ var WaveformViewer = class {
     const lowY = y + rowH - 8;
     const midY = (highY + lowY) / 2;
     if (width === 1) {
-      this.ctx.strokeStyle = "#7fcfff";
-      this.ctx.lineWidth = 2;
+      this.ctx.strokeStyle = "#6dd58c";
+      this.ctx.lineWidth = 1.8;
       this.ctx.beginPath();
-      let currentVal = "0";
       let prevX = this.panOffset;
       let prevY = lowY;
       this.ctx.moveTo(prevX, prevY);
@@ -2570,7 +3246,6 @@ var WaveformViewer = class {
         this.ctx.lineTo(nextX, nextY);
         prevX = nextX;
         prevY = nextY;
-        currentVal = ch.value;
       }
       if (this.trace) {
         const endX = this.panOffset + this.trace.maxTime * this.zoom;
@@ -2578,15 +3253,15 @@ var WaveformViewer = class {
       }
       this.ctx.stroke();
     } else {
-      this.ctx.strokeStyle = "#7fcfff";
-      this.ctx.fillStyle = "#004d67";
-      this.ctx.lineWidth = 1.5;
+      this.ctx.lineWidth = 1.4;
       let prevX = this.panOffset;
       let prevVal = "0";
       for (let i = 0; i < changes.length; i++) {
         const ch = changes[i];
         const nextX = this.panOffset + ch.time * this.zoom;
         if (nextX > prevX + 2) {
+          this.ctx.strokeStyle = "#7fcfff";
+          this.ctx.fillStyle = "#004d67";
           this.ctx.beginPath();
           this.ctx.moveTo(prevX + 2, highY);
           this.ctx.lineTo(nextX - 2, highY);
@@ -2598,10 +3273,11 @@ var WaveformViewer = class {
           this.ctx.fill();
           this.ctx.stroke();
           const formatted = (0, import_vcd.formatSignalValue)(prevVal, width, this.radix);
-          if (nextX - prevX > 28) {
+          if (nextX - prevX > 32) {
             this.ctx.fillStyle = "#c2e7ff";
             this.ctx.font = '10px "Roboto Mono", monospace';
-            this.ctx.fillText(formatted, prevX + 6, midY + 3);
+            this.ctx.textAlign = "left";
+            this.ctx.fillText(formatted, prevX + 6, midY + 3.5);
           }
         }
         prevX = nextX;
@@ -2610,6 +3286,8 @@ var WaveformViewer = class {
       if (this.trace) {
         const endX = this.panOffset + this.trace.maxTime * this.zoom;
         if (endX > prevX) {
+          this.ctx.strokeStyle = "#7fcfff";
+          this.ctx.fillStyle = "#004d67";
           this.ctx.beginPath();
           this.ctx.moveTo(prevX + 2, highY);
           this.ctx.lineTo(endX, highY);
@@ -2619,10 +3297,13 @@ var WaveformViewer = class {
           this.ctx.closePath();
           this.ctx.fill();
           this.ctx.stroke();
-          const formatted = (0, import_vcd.formatSignalValue)(prevVal, width, this.radix);
-          this.ctx.fillStyle = "#c2e7ff";
-          this.ctx.font = '10px "Roboto Mono", monospace';
-          this.ctx.fillText(formatted, prevX + 6, midY + 3);
+          if (endX - prevX > 32) {
+            const formatted = (0, import_vcd.formatSignalValue)(prevVal, width, this.radix);
+            this.ctx.fillStyle = "#c2e7ff";
+            this.ctx.font = '10px "Roboto Mono", monospace';
+            this.ctx.textAlign = "left";
+            this.ctx.fillText(formatted, prevX + 6, midY + 3.5);
+          }
         }
       }
     }
@@ -2655,12 +3336,17 @@ var WaveformViewer = class {
 };
 
 // apps/web/src/app.ts
+var MAX_HISTORY = 40;
 var KonaApp = class {
   canvas;
   waveformViewer;
   design;
   selectedInstance = null;
+  selectedNet = null;
   diagnostics = [];
+  history = [];
+  historyIndex = -1;
+  isDirty = false;
   constructor() {
     this.design = this.loadDesignFromHash() || import_catalog2.STARTER_TEMPLATES[0].createDesign();
     const canvasEl = document.getElementById("schematic-canvas");
@@ -2669,93 +3355,211 @@ var KonaApp = class {
     this.waveformViewer = new WaveformViewer(wfContainer);
     this.canvas.onSelectionChange((inst) => {
       this.selectedInstance = inst;
+      if (inst) this.selectedNet = null;
+      this.renderInspector();
+    });
+    this.canvas.onNetSelectionChange((net) => {
+      this.selectedNet = net;
+      if (net) this.selectedInstance = null;
       this.renderInspector();
     });
     this.canvas.onDesignChange((newDesign) => {
       this.design = newDesign;
-      this.onDesignUpdated();
+      this.isDirty = true;
+      this.onDesignUpdated(true);
     });
     this.setupCatalogSidebar();
+    this.setupCanvasDragDrop();
     this.setupTemplatesPicker();
     this.setupHeaderActions();
+    this.setupCanvasToolbar();
+    this.setupSidebarToggles();
     this.setupBottomDrawerTabs();
     this.setupSimulationControls();
-    this.onDesignUpdated();
+    this.pushHistorySnapshot(this.design);
+    this.onDesignUpdated(false);
     this.renderInspector();
+    this.canvas.fitToScreen();
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => this.canvas.fitToScreen());
+    }
   }
-  onDesignUpdated() {
+  pushHistorySnapshot(design) {
+    const snap = (0, import_ir.serializeKonaDesign)(design);
+    if (this.history[this.historyIndex] === snap) return;
+    this.history = this.history.slice(0, this.historyIndex + 1);
+    this.history.push(snap);
+    if (this.history.length > MAX_HISTORY) {
+      this.history.shift();
+    }
+    this.historyIndex = this.history.length - 1;
+    this.updateUndoRedoButtons();
+  }
+  undo() {
+    if (this.historyIndex <= 0) return;
+    this.historyIndex--;
+    this.restoreFromHistory();
+  }
+  redo() {
+    if (this.historyIndex >= this.history.length - 1) return;
+    this.historyIndex++;
+    this.restoreFromHistory();
+  }
+  restoreFromHistory() {
+    const snap = this.history[this.historyIndex];
+    if (!snap) return;
+    const { design } = (0, import_ir.parseKonaDesign)(snap);
+    if (!design) return;
+    this.design = design;
+    this.canvas.setDesign(this.design);
+    this.onDesignUpdated(false);
+    this.updateUndoRedoButtons();
+  }
+  updateUndoRedoButtons() {
+    const undoBtn = document.getElementById("btn-undo");
+    const redoBtn = document.getElementById("btn-redo");
+    if (undoBtn) undoBtn.disabled = this.historyIndex <= 0;
+    if (redoBtn) redoBtn.disabled = this.historyIndex >= this.history.length - 1;
+  }
+  onDesignUpdated(recordHistory = true) {
+    if (recordHistory) {
+      this.pushHistorySnapshot(this.design);
+    }
     this.diagnostics = (0, import_drc2.runDesignRuleCheck)(this.design);
+    this.canvas.setDiagnostics(this.diagnostics);
     this.renderDrcStatus();
+    const statsEl = document.getElementById("canvas-stats-text");
+    if (statsEl) {
+      const bCount = this.design.instances.length;
+      const nCount = this.design.nets.length;
+      statsEl.textContent = `${bCount} block${bCount === 1 ? "" : "s"} \u2022 ${nCount} net${nCount === 1 ? "" : "s"}`;
+    }
     const svCode = (0, import_codegen.generateSystemVerilog)(this.design);
     const codeEl = document.getElementById("sv-code-output");
-    if (codeEl) codeEl.textContent = svCode;
+    if (codeEl) {
+      codeEl.innerHTML = highlightSystemVerilog(svCode);
+    }
     const lineNumbersEl = document.getElementById("code-line-numbers");
     if (lineNumbersEl) {
       const lineCount = svCode.split("\n").length;
       lineNumbersEl.innerHTML = Array.from({ length: lineCount }, (_, i) => `<div>${i + 1}</div>`).join("");
     }
+    if (!this.selectedInstance && !this.selectedNet) {
+      this.renderInspector();
+    }
     this.saveDesignToHash();
   }
   renderDrcStatus() {
     const chipEl = document.getElementById("drc-status-chip");
+    const badgeEl = document.getElementById("drc-badge-count");
     const panelEl = document.getElementById("drc-panel-body");
     const errors = this.diagnostics.filter((d) => d.severity === "error");
     const warnings = this.diagnostics.filter((d) => d.severity === "warning");
     if (chipEl) {
       if (errors.length > 0) {
-        chipEl.className = "status-chip error";
+        chipEl.className = "status-chip error md-chip";
         chipEl.textContent = `${errors.length} DRC Error${errors.length > 1 ? "s" : ""}`;
       } else if (warnings.length > 0) {
-        chipEl.className = "status-chip warning";
+        chipEl.className = "status-chip warning md-chip";
         chipEl.textContent = `${warnings.length} DRC Warning${warnings.length > 1 ? "s" : ""}`;
       } else {
-        chipEl.className = "status-chip success";
+        chipEl.className = "status-chip success md-chip";
         chipEl.textContent = "DRC Passed";
+      }
+    }
+    if (badgeEl) {
+      if (errors.length > 0) {
+        badgeEl.className = "drc-header-badge md-badge-pill error";
+        badgeEl.textContent = `${errors.length} Error${errors.length > 1 ? "s" : ""}`;
+      } else if (warnings.length > 0) {
+        badgeEl.className = "drc-header-badge md-badge-pill warning";
+        badgeEl.textContent = `${warnings.length} Warning${warnings.length > 1 ? "s" : ""}`;
+      } else {
+        badgeEl.className = "drc-header-badge md-badge-pill";
+        badgeEl.textContent = "0 Errors";
       }
     }
     if (panelEl) {
       if (this.diagnostics.length === 0) {
         panelEl.innerHTML = '<div class="drc-empty">All design rules satisfied. Clean netlist!</div>';
       } else {
-        panelEl.innerHTML = this.diagnostics.map((d) => `
-          <div class="drc-item ${d.severity}">
-            <div class="drc-item-rule">${d.rule}</div>
-            <div class="drc-item-msg">${escapeHtml(d.message)}</div>
-          </div>
-        `).join("");
+        panelEl.innerHTML = this.diagnostics.map((d) => {
+          const targetAttr = d.instanceId ? `data-focus-inst="${escapeHtml(d.instanceId)}"` : d.netId ? `data-focus-net="${escapeHtml(d.netId)}"` : "";
+          const clickable = targetAttr ? "clickable" : "";
+          return `
+            <div class="drc-item ${d.severity} ${clickable}" ${targetAttr} title="${targetAttr ? "Click to focus on canvas" : ""}">
+              <div class="drc-item-rule">${d.rule}</div>
+              <div class="drc-item-msg">${escapeHtml(d.message)}</div>
+            </div>
+          `;
+        }).join("");
+        panelEl.querySelectorAll(".drc-item.clickable").forEach((item) => {
+          item.addEventListener("click", () => {
+            const instId = item.getAttribute("data-focus-inst");
+            const netId = item.getAttribute("data-focus-net");
+            if (instId) this.canvas.focusInstance(instId);
+            else if (netId) this.canvas.focusNet(netId);
+          });
+        });
       }
     }
   }
   renderInspector() {
     const container = document.getElementById("inspector-content");
     if (!container) return;
+    if (this.selectedNet) {
+      this.renderNetInspector(container, this.selectedNet);
+      return;
+    }
     if (!this.selectedInstance) {
+      const bCount = this.design.instances.length;
+      const nCount = this.design.nets.length;
       container.innerHTML = `
         <div class="inspector-empty">
           <div class="empty-graphic">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
               <rect x="3" y="3" width="18" height="18" rx="4" />
               <circle cx="8.5" cy="8.5" r="1.5" />
               <path d="M21 15l-5-5L5 21" />
             </svg>
           </div>
-          <div class="empty-icon">Select a Block</div>
-          <p>Click on any module on the schematic canvas to inspect its ports and tune parameters.</p>
+          <div class="empty-icon">Select a Block or Net</div>
+          <p>Click any module or wire on the schematic canvas to inspect its ports, tune parameters, or edit net connections.</p>
+          <div class="inspector-design-summary">
+            <div class="summary-row"><span>Design</span><strong>${escapeHtml(this.design.name)}</strong></div>
+            <div class="summary-row"><span>Top Module</span><code>${escapeHtml(this.design.topModule)}</code></div>
+            <div class="summary-row"><span>Modules / Nets</span><strong>${bCount} / ${nCount}</strong></div>
+          </div>
         </div>
       `;
       return;
     }
     const inst = this.selectedInstance;
     const modDef = (0, import_catalog2.getModuleDef)(inst.moduleId);
+    const instDiags = this.diagnostics.filter((d) => d.instanceId === inst.id);
     let html = `
       <div class="inspector-header">
-        <span class="inspector-badge">${modDef?.category || "module"}</span>
+        <div class="inspector-header-top">
+          <span class="inspector-badge">${modDef?.category || "module"}</span>
+          <div class="inspector-quick-actions">
+            <button id="btn-focus-module" class="btn-chip-action" title="Center canvas on block">Focus</button>
+            <button id="btn-dup-module" class="btn-chip-action" title="Duplicate block (Ctrl+D)">Duplicate</button>
+          </div>
+        </div>
         <h3>${escapeHtml(inst.name)}</h3>
         <p class="inspector-desc">${modDef?.description || ""}</p>
       </div>
-
+    `;
+    if (instDiags.length > 0) {
+      html += `
+        <div class="inspector-alerts">
+          ${instDiags.map((d) => `<div class="inspector-alert ${d.severity}"><strong>${d.rule}:</strong> ${escapeHtml(d.message)}</div>`).join("")}
+        </div>
+      `;
+    }
+    html += `
       <div class="inspector-section">
-        <label class="section-title">Instance Name</label>
+        <label class="section-title" for="inspector-inst-name">Instance Name</label>
         <input type="text" id="inspector-inst-name" class="kona-input" value="${escapeHtml(inst.name)}" />
       </div>
 
@@ -2796,16 +3600,17 @@ var KonaApp = class {
       </div>
 
       <div class="inspector-section">
-        <label class="section-title">Ports</label>
+        <label class="section-title">Ports (${modDef?.ports.length || 0})</label>
         <div class="ports-list">
     `;
     if (modDef) {
       for (const port of modDef.ports) {
-        const isBus = port.width > 1;
+        const ew = (0, import_drc2.getEffectivePortWidth)(modDef, port, inst);
+        const isBus = ew > 1;
         html += `
-          <div class="port-row">
+          <div class="port-row" title="${escapeHtml(port.description || port.name)}">
             <span class="port-dir ${port.direction}">${port.direction.toUpperCase()}</span>
-            <span class="port-name">${port.name}${isBus ? `[${port.width - 1}:0]` : ""}</span>
+            <span class="port-name">${port.name}${isBus ? `[${ew - 1}:0]` : ""}</span>
             <span class="port-type">${port.type}</span>
           </div>
         `;
@@ -2822,31 +3627,127 @@ var KonaApp = class {
     const nameInput = document.getElementById("inspector-inst-name");
     nameInput?.addEventListener("input", () => {
       inst.name = nameInput.value;
+      this.isDirty = true;
       this.canvas.render();
-      this.onDesignUpdated();
+      this.onDesignUpdated(true);
     });
     container.querySelectorAll(".param-bool").forEach((el) => {
       el.addEventListener("change", (e) => {
         const pName = e.target.dataset.param;
         inst.parameters[pName] = e.target.checked;
-        this.onDesignUpdated();
+        this.isDirty = true;
+        this.canvas.render();
+        this.onDesignUpdated(true);
       });
     });
     container.querySelectorAll(".param-num").forEach((el) => {
       el.addEventListener("input", (e) => {
         const pName = e.target.dataset.param;
         inst.parameters[pName] = parseInt(e.target.value, 10) || 0;
-        this.onDesignUpdated();
+        this.isDirty = true;
+        this.canvas.render();
+        this.onDesignUpdated(true);
       });
     });
     container.querySelectorAll(".param-str").forEach((el) => {
       el.addEventListener("input", (e) => {
         const pName = e.target.dataset.param;
         inst.parameters[pName] = e.target.value;
-        this.onDesignUpdated();
+        this.isDirty = true;
+        this.canvas.render();
+        this.onDesignUpdated(true);
       });
     });
+    document.getElementById("btn-focus-module")?.addEventListener("click", () => {
+      this.canvas.focusInstance(inst.id);
+    });
+    document.getElementById("btn-dup-module")?.addEventListener("click", () => {
+      this.canvas.duplicateSelected();
+      showToast(`Duplicated ${inst.name}`, "info");
+    });
     document.getElementById("btn-delete-module")?.addEventListener("click", () => {
+      this.canvas.deleteSelected();
+    });
+  }
+  renderNetInspector(container, net) {
+    const instName = (id) => this.design.instances.find((i) => i.id === id)?.name || id;
+    const netDiags = this.diagnostics.filter((d) => d.netId === net.id);
+    let html = `
+      <div class="inspector-header">
+        <div class="inspector-header-top">
+          <span class="inspector-badge">${net.width > 1 ? `BUS [${net.width - 1}:0]` : "1-BIT WIRE"}</span>
+          <button id="btn-focus-net" class="btn-chip-action" title="Center canvas on net">Focus</button>
+        </div>
+        <h3>${escapeHtml(net.name)}</h3>
+        <p class="inspector-desc">Signal net connecting ${net.targets.length} receiver${net.targets.length === 1 ? "" : "s"}.</p>
+      </div>
+    `;
+    if (netDiags.length > 0) {
+      html += `
+        <div class="inspector-alerts">
+          ${netDiags.map((d) => `<div class="inspector-alert ${d.severity}"><strong>${d.rule}:</strong> ${escapeHtml(d.message)}</div>`).join("")}
+        </div>
+      `;
+    }
+    html += `
+      <div class="inspector-section">
+        <label class="section-title" for="inspector-net-name">Net Name</label>
+        <input type="text" id="inspector-net-name" class="kona-input" value="${escapeHtml(net.name)}" />
+      </div>
+
+      <div class="inspector-section">
+        <label class="section-title">Driver Source</label>
+        <div class="port-row">
+          <span class="port-dir output">SRC</span>
+          <span class="port-name">${net.source ? `${escapeHtml(instName(net.source.instanceId))}.${escapeHtml(net.source.portId)}` : "Undriven"}</span>
+        </div>
+      </div>
+
+      <div class="inspector-section">
+        <label class="section-title">Target Receivers (${net.targets.length})</label>
+        <div class="ports-list">
+          ${net.targets.length === 0 ? '<div class="empty-text">No target pins connected.</div>' : net.targets.map((t, idx) => `
+              <div class="port-row">
+                <span class="port-dir input">DST</span>
+                <span class="port-name">${escapeHtml(instName(t.instanceId))}.${escapeHtml(t.portId)}</span>
+                <button class="btn-disconnect-pin" data-tgt-idx="${idx}" title="Disconnect this pin">&times;</button>
+              </div>
+            `).join("")}
+        </div>
+      </div>
+
+      <div class="inspector-footer">
+        <button id="btn-delete-net" class="btn-danger">Delete Wire</button>
+      </div>
+    `;
+    container.innerHTML = html;
+    const netNameInput = document.getElementById("inspector-net-name");
+    netNameInput?.addEventListener("input", () => {
+      net.name = netNameInput.value || net.name;
+      this.isDirty = true;
+      this.canvas.render();
+      this.onDesignUpdated(true);
+    });
+    document.getElementById("btn-focus-net")?.addEventListener("click", () => {
+      this.canvas.focusNet(net.id);
+    });
+    container.querySelectorAll(".btn-disconnect-pin").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = parseInt(btn.getAttribute("data-tgt-idx") || "-1", 10);
+        if (idx >= 0 && idx < net.targets.length) {
+          net.targets.splice(idx, 1);
+          if (net.targets.length === 0) {
+            this.canvas.deleteSelected();
+          } else {
+            this.isDirty = true;
+            this.canvas.render();
+            this.onDesignUpdated(true);
+            this.renderInspector();
+          }
+        }
+      });
+    });
+    document.getElementById("btn-delete-net")?.addEventListener("click", () => {
       this.canvas.deleteSelected();
     });
   }
@@ -2858,7 +3759,7 @@ var KonaApp = class {
     const getFilteredItems = () => {
       return import_catalog2.STARTER_IP_CATALOG.filter((m) => {
         const matchesCategory = activeFilter === "all" || m.category === activeFilter;
-        const matchesSearch = !searchQuery || m.name.toLowerCase().includes(searchQuery) || m.description.toLowerCase().includes(searchQuery) || m.category.toLowerCase().includes(searchQuery);
+        const matchesSearch = !searchQuery || m.name.toLowerCase().includes(searchQuery) || m.description.toLowerCase().includes(searchQuery) || m.category.toLowerCase().includes(searchQuery) || m.id.toLowerCase().includes(searchQuery);
         return matchesCategory && matchesSearch;
       });
     };
@@ -2866,19 +3767,22 @@ var KonaApp = class {
       const items = getFilteredItems();
       if (items.length === 0) {
         listEl.innerHTML = `
-          <div class="catalog-empty" style="text-align:center; padding:32px 16px; color:var(--md-sys-color-outline);">
-            <p style="font-size:12px;">No matching IP modules found.</p>
+          <div class="catalog-empty">
+            <p>No matching IP modules found.</p>
           </div>
         `;
       } else {
         listEl.innerHTML = items.map((mod) => `
-          <div class="catalog-card" data-module-id="${mod.id}" title="${mod.description}">
+          <div class="catalog-card" draggable="true" data-module-id="${mod.id}" title="${escapeHtml(mod.description)}">
             <div class="catalog-card-header">
               <span class="catalog-category-tag ${mod.category}">${mod.category}</span>
-              <span class="catalog-add-btn">+ Add</span>
+              <span class="catalog-meta-right">
+                <span class="catalog-port-count">${mod.ports.length}p</span>
+                <span class="catalog-add-btn">+ Add</span>
+              </span>
             </div>
-            <div class="catalog-card-title">${mod.name}</div>
-            <div class="catalog-card-desc">${mod.description}</div>
+            <div class="catalog-card-title">${escapeHtml(mod.name)}</div>
+            <div class="catalog-card-desc">${escapeHtml(mod.description)}</div>
           </div>
         `).join("");
         listEl.querySelectorAll(".catalog-card").forEach((card) => {
@@ -2887,6 +3791,14 @@ var KonaApp = class {
             if (modId) {
               this.canvas.addModule(modId);
               showToast(`Added ${modId} to canvas`, "success");
+            }
+          });
+          card.addEventListener("dragstart", (e) => {
+            const modId = card.getAttribute("data-module-id");
+            const dragEvent = e;
+            if (modId && dragEvent.dataTransfer) {
+              dragEvent.dataTransfer.setData("text/kona-module", modId);
+              dragEvent.dataTransfer.effectAllowed = "copy";
             }
           });
         });
@@ -2918,24 +3830,117 @@ var KonaApp = class {
       renderItems();
     });
   }
+  setupCanvasDragDrop() {
+    const viewport = document.querySelector(".canvas-viewport");
+    const canvasEl = document.getElementById("schematic-canvas");
+    if (!viewport || !canvasEl) return;
+    canvasEl.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      viewport.classList.add("drag-over");
+    });
+    canvasEl.addEventListener("dragleave", () => {
+      viewport.classList.remove("drag-over");
+    });
+    canvasEl.addEventListener("drop", (e) => {
+      e.preventDefault();
+      viewport.classList.remove("drag-over");
+      const modId = e.dataTransfer?.getData("text/kona-module");
+      if (!modId) return;
+      const rect = canvasEl.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const world = this.canvas.screenToWorld(sx, sy);
+      this.canvas.addModuleAt(modId, world.x - 100, world.y - 60);
+      showToast(`Dropped ${modId} onto canvas`, "success");
+    });
+  }
   setupTemplatesPicker() {
     const container = document.getElementById("templates-picker");
     if (!container) return;
     container.innerHTML = `
-      <label class="picker-label">Architecture Template:</label>
+      <label class="picker-label" for="template-select">Template:</label>
       <select id="template-select" class="kona-select">
         ${import_catalog2.STARTER_TEMPLATES.map((t) => `<option value="${t.id}">${t.name}</option>`).join("")}
       </select>
     `;
     const selectEl = container.querySelector("#template-select");
+    let lastValue = selectEl.value;
     selectEl?.addEventListener("change", () => {
       const tmpl = import_catalog2.STARTER_TEMPLATES.find((t) => t.id === selectEl.value);
-      if (tmpl && confirm(`Load template "${tmpl.name}"? Current canvas edits will be replaced.`)) {
-        this.design = tmpl.createDesign();
-        this.canvas.setDesign(this.design);
-        this.onDesignUpdated();
-        showToast(`Loaded ${tmpl.name}`, "info");
+      if (!tmpl) return;
+      if (this.isDirty && !confirm(`Load template "${tmpl.name}"? Unsaved canvas edits will be replaced.`)) {
+        selectEl.value = lastValue;
+        return;
       }
+      lastValue = selectEl.value;
+      this.design = tmpl.createDesign();
+      this.isDirty = false;
+      this.history = [];
+      this.historyIndex = -1;
+      this.pushHistorySnapshot(this.design);
+      this.canvas.setDesign(this.design);
+      this.canvas.fitToScreen();
+      this.onDesignUpdated(false);
+      showToast(`Loaded ${tmpl.name}`, "info");
+    });
+  }
+  setupCanvasToolbar() {
+    document.getElementById("btn-fit-view")?.addEventListener("click", () => this.canvas.fitToScreen());
+    document.getElementById("btn-canvas-fit")?.addEventListener("click", () => this.canvas.fitToScreen());
+    document.getElementById("btn-undo")?.addEventListener("click", () => this.undo());
+    document.getElementById("btn-redo")?.addEventListener("click", () => this.redo());
+    const selectBtn = document.getElementById("btn-tool-select");
+    const panBtn = document.getElementById("btn-tool-pan");
+    selectBtn?.addEventListener("click", () => {
+      this.canvas.setToolMode("select");
+      selectBtn.classList.add("active");
+      panBtn?.classList.remove("active");
+    });
+    panBtn?.addEventListener("click", () => {
+      this.canvas.setToolMode("pan");
+      panBtn.classList.add("active");
+      selectBtn?.classList.remove("active");
+    });
+    const snapBtn = document.getElementById("btn-toggle-snap");
+    const snapLabel = document.getElementById("snap-status-label");
+    snapBtn?.addEventListener("click", () => {
+      const next = !this.canvas.isGridSnapEnabled();
+      this.canvas.setGridSnap(next);
+      snapBtn.classList.toggle("active", next);
+      if (snapLabel) snapLabel.textContent = next ? "Grid Snap: 20px" : "Grid Snap: Off";
+    });
+    window.addEventListener("keydown", (e) => {
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        this.undo();
+      } else if (mod && e.key.toLowerCase() === "y" || mod && e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        this.redo();
+      } else if (mod && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        const dup = this.canvas.duplicateSelected();
+        if (dup) showToast(`Duplicated ${dup.name}`, "info");
+      }
+    });
+  }
+  setupSidebarToggles() {
+    const leftSidebar = document.querySelector(".sidebar-left");
+    const rightSidebar = document.querySelector(".sidebar-right");
+    const leftBtn = document.getElementById("btn-toggle-left-sidebar");
+    const rightBtn = document.getElementById("btn-toggle-right-sidebar");
+    leftBtn?.addEventListener("click", () => {
+      leftSidebar?.classList.toggle("collapsed");
+      leftBtn.classList.toggle("active", !leftSidebar?.classList.contains("collapsed"));
+      setTimeout(() => this.canvas.resize(), 220);
+    });
+    rightBtn?.addEventListener("click", () => {
+      rightSidebar?.classList.toggle("collapsed");
+      rightBtn.classList.toggle("active", !rightSidebar?.classList.contains("collapsed"));
+      setTimeout(() => this.canvas.resize(), 220);
     });
   }
   setupHeaderActions() {
@@ -2956,7 +3961,7 @@ var KonaApp = class {
       if (e.target === modalEl) closeModal();
     });
     window.addEventListener("keydown", (e) => {
-      if (e.key === "?" && !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName || "")) {
+      if (e.key === "?" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName || "")) {
         openModal();
       } else if (e.key === "Escape" && modalEl?.style.display === "flex") {
         closeModal();
@@ -2980,18 +3985,29 @@ var KonaApp = class {
         drawerState = "normal";
         toggleDrawerBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
       }
-      this.waveformViewer.resize();
+      setTimeout(() => {
+        this.canvas.resize();
+        this.waveformViewer.resize();
+      }, 260);
     });
     const drcChip = document.getElementById("drc-status-chip");
     const drcToggle = document.getElementById("drc-panel-toggle");
+    const drcContainer = document.querySelector(".drc-panel-container");
     const drcBody = document.getElementById("drc-panel-body");
-    const toggleDrc = () => {
-      if (drcBody) {
-        drcBody.style.display = drcBody.style.display === "none" ? "flex" : "none";
+    drcToggle?.addEventListener("click", () => {
+      if (!drcBody || !drcContainer) return;
+      const collapsed = drcContainer.classList.toggle("collapsed");
+      drcBody.style.display = collapsed ? "none" : "flex";
+    });
+    drcChip?.addEventListener("click", () => {
+      const rightSidebar = document.querySelector(".sidebar-right");
+      rightSidebar?.classList.remove("collapsed");
+      if (drcBody && drcContainer) {
+        drcContainer.classList.remove("collapsed");
+        drcBody.style.display = "flex";
       }
-    };
-    drcChip?.addEventListener("click", toggleDrc);
-    drcToggle?.addEventListener("click", toggleDrc);
+      this.canvas.resize();
+    });
     document.getElementById("btn-export-json")?.addEventListener("click", () => {
       const json = (0, import_ir.serializeKonaDesign)(this.design);
       downloadFile(json, `${this.design.topModule || "chip"}.kona.json`, "application/json");
@@ -3017,15 +4033,22 @@ var KonaApp = class {
   }
   setupBottomDrawerTabs() {
     const tabs = document.querySelectorAll(".drawer-tab");
+    const drawerEl = document.getElementById("app-bottom-drawer");
     tabs.forEach((tab) => {
       tab.addEventListener("click", () => {
         tabs.forEach((t) => t.classList.remove("active"));
         tab.classList.add("active");
+        if (drawerEl?.classList.contains("minimized")) {
+          drawerEl.classList.remove("minimized");
+        }
         const target = tab.getAttribute("data-target");
         document.querySelectorAll(".drawer-pane").forEach((p) => p.classList.remove("active"));
         document.getElementById(`pane-${target}`)?.classList.add("active");
         if (target === "waveform") {
           this.waveformViewer.resize();
+          if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => this.waveformViewer.resize());
+          }
         }
       });
     });
@@ -3039,13 +4062,14 @@ var KonaApp = class {
       if (simStatus) simStatus.textContent = "Simulating in WebAssembly...";
       setTimeout(() => {
         const result = (0, import_sim.runSimulation)(this.design, cycles);
+        const wfTab = document.querySelector('[data-target="waveform"]');
+        wfTab?.click();
         this.waveformViewer.setTrace(result.trace);
+        this.waveformViewer.resize();
         if (simStatus) {
           simStatus.textContent = `Completed ${result.totalCycles} cycles in ${result.durationMs}ms`;
         }
-        const wfTab = document.querySelector('[data-target="waveform"]');
-        wfTab?.click();
-      }, 50);
+      }, 40);
     });
   }
   saveDesignToHash() {
@@ -3075,6 +4099,64 @@ var KonaApp = class {
 function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+function highlightSystemVerilog(code) {
+  const keywords = /* @__PURE__ */ new Set([
+    "module",
+    "endmodule",
+    "input",
+    "output",
+    "inout",
+    "logic",
+    "wire",
+    "reg",
+    "localparam",
+    "parameter",
+    "assign",
+    "always_ff",
+    "always_comb",
+    "posedge",
+    "negedge",
+    "begin",
+    "end",
+    "if",
+    "else"
+  ]);
+  return code.split("\n").map((line) => {
+    const commentIdx = line.indexOf("//");
+    const codePart = commentIdx >= 0 ? line.slice(0, commentIdx) : line;
+    const commentPart = commentIdx >= 0 ? line.slice(commentIdx) : "";
+    let highlighted = "";
+    const trimmed = codePart.trimStart();
+    if (trimmed.startsWith("`")) {
+      highlighted = `<span class="sv-directive">${escapeHtml(codePart)}</span>`;
+    } else {
+      const tokenRegex = /([a-zA-Z_][a-zA-Z0-9_]*|\d+'[bhdoBHDO][0-9a-fA-F_xXzZ]+|\d+)/g;
+      let lastIdx = 0;
+      let match;
+      while ((match = tokenRegex.exec(codePart)) !== null) {
+        if (match.index > lastIdx) {
+          highlighted += escapeHtml(codePart.slice(lastIdx, match.index));
+        }
+        const tok = match[0];
+        if (keywords.has(tok)) {
+          highlighted += `<span class="sv-kw">${escapeHtml(tok)}</span>`;
+        } else if (/^\d/.test(tok)) {
+          highlighted += `<span class="sv-num">${escapeHtml(tok)}</span>`;
+        } else {
+          highlighted += escapeHtml(tok);
+        }
+        lastIdx = tokenRegex.lastIndex;
+      }
+      if (lastIdx < codePart.length) {
+        highlighted += escapeHtml(codePart.slice(lastIdx));
+      }
+    }
+    if (commentPart) {
+      highlighted += `<span class="sv-comment">${escapeHtml(commentPart)}</span>`;
+    }
+    return highlighted;
+  }).join("\n");
+}
 function downloadFile(content, filename, mimeType) {
   const a = document.createElement("a");
   a.download = filename;
@@ -3102,10 +4184,10 @@ function showToast(message, type = "info") {
   container.appendChild(toast);
   setTimeout(() => {
     toast.style.opacity = "0";
-    toast.style.transform = "translateY(8px)";
+    toast.style.transform = "translateY(-8px)";
     toast.style.transition = "all 0.25s ease";
     setTimeout(() => toast.remove(), 250);
-  }, 2800);
+  }, 2600);
 }
 
 // apps/web/src/index.ts

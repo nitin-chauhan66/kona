@@ -2,7 +2,7 @@
  * Interactive VCD Waveform Viewer (FR-1.5)
  *
  * Renders digital signals, scalar waveforms, vector bus transitions,
- * time cursors, and radix formatting (Hex, Dec, Bin).
+ * time cursors, drag-scrubbing, wheel zoom, and radix formatting (Hex, Dec, Bin).
  */
 
 import { VcdTrace, formatSignalValue } from '../../../packages/core/dist/vcd.js';
@@ -14,8 +14,11 @@ export class WaveformViewer {
   private trace: VcdTrace | null = null;
   private radix: 'hex' | 'dec' | 'bin' = 'hex';
   private zoom = 1.0;
-  private panOffset = 0;
+  private panOffset = 20;
   private cursorTime: number | null = null;
+  private needsFit = false;
+  private isScrubbing = false;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -28,13 +31,14 @@ export class WaveformViewer {
             <button class="wf-btn" id="wf-zoom-reset" title="Fit Timeline">Fit</button>
           </div>
           <div class="wf-radix-picker">
-            <label>Radix:</label>
+            <label for="wf-radix-select">Radix:</label>
             <select id="wf-radix-select" class="wf-select">
               <option value="hex" selected>Hex</option>
               <option value="dec">Dec</option>
               <option value="bin">Bin</option>
             </select>
           </div>
+          <span class="wf-hint">Click or drag timeline to scrub cursor &bull; Scroll to zoom</span>
           <div class="wf-cursor-info" id="wf-cursor-val">Cursor: None</div>
         </div>
         <div class="waveform-body">
@@ -54,12 +58,25 @@ export class WaveformViewer {
     this.ctx = ctx;
 
     this.setupEvents();
+    this.setupResizeObserver();
     this.resize();
+  }
+
+  private setupResizeObserver(): void {
+    const wrap = this.canvas.parentElement;
+    if (wrap && typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.resize();
+      });
+      this.resizeObserver.observe(wrap);
+    }
   }
 
   public setTrace(trace: VcdTrace): void {
     this.trace = trace;
     this.cursorTime = 0;
+    this.needsFit = true;
+    this.updateSidebar();
     this.fitTimeline();
     this.render();
   }
@@ -73,20 +90,44 @@ export class WaveformViewer {
     const wrap = this.canvas.parentElement;
     if (!wrap) return;
     const rect = wrap.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.floor(rect.width * dpr);
     this.canvas.height = Math.floor(rect.height * dpr);
     this.canvas.style.width = `${rect.width}px`;
     this.canvas.style.height = `${rect.height}px`;
+    this.ctx.resetTransform?.();
+
+    if (this.needsFit && this.trace) {
+      this.fitTimeline();
+    }
     this.render();
   }
 
   private fitTimeline(): void {
     if (!this.trace || this.trace.maxTime <= 0) return;
     const wrap = this.canvas.parentElement;
-    const clientW = wrap?.clientWidth || 600;
-    this.zoom = (clientW - 60) / this.trace.maxTime;
+    const rectW = wrap?.getBoundingClientRect().width || wrap?.clientWidth || 0;
+    if (rectW <= 40) {
+      // Container is currently hidden or collapsed; defer fit until visible resize
+      this.needsFit = true;
+      this.zoom = Math.max(2, 540 / this.trace.maxTime);
+      this.panOffset = 20;
+      return;
+    }
+    this.zoom = Math.max(0.5, (rectW - 48) / this.trace.maxTime);
     this.panOffset = 20;
+    this.needsFit = false;
+  }
+
+  private updateCursorFromClientX(clientX: number): void {
+    if (!this.trace) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const clickX = clientX - rect.left;
+    const time = Math.round((clickX - this.panOffset) / this.zoom);
+    this.cursorTime = Math.max(0, Math.min(this.trace.maxTime, time));
+    this.render();
   }
 
   private setupEvents(): void {
@@ -96,7 +137,7 @@ export class WaveformViewer {
     });
 
     this.container.querySelector('#wf-zoom-out')?.addEventListener('click', () => {
-      this.zoom = Math.max(0.1, this.zoom / 1.25);
+      this.zoom = Math.max(0.2, this.zoom / 1.25);
       this.render();
     });
 
@@ -110,31 +151,54 @@ export class WaveformViewer {
       this.setRadix(radixSelect.value as 'hex' | 'dec' | 'bin');
     });
 
-    this.canvas.addEventListener('click', (e) => {
+    this.canvas.addEventListener('mousedown', (e) => {
       if (!this.trace) return;
-      const rect = this.canvas.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const time = Math.round((clickX - this.panOffset) / this.zoom);
-      this.cursorTime = Math.max(0, Math.min(this.trace.maxTime, time));
-      this.render();
+      this.isScrubbing = true;
+      this.updateCursorFromClientX(e.clientX);
     });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!this.isScrubbing || !this.trace) return;
+      this.updateCursorFromClientX(e.clientX);
+    });
+
+    window.addEventListener('mouseup', () => {
+      this.isScrubbing = false;
+    });
+
+    this.canvas.addEventListener('wheel', (e) => {
+      if (!this.trace) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      this.zoom = Math.max(0.2, Math.min(40, this.zoom * factor));
+      this.render();
+    }, { passive: false });
 
     window.addEventListener('resize', () => this.resize());
   }
 
   public render(): void {
+    const dpr = window.devicePixelRatio || 1;
+    const w = this.canvas.width / dpr || this.canvas.clientWidth || 600;
+    const h = this.canvas.height / dpr || this.canvas.clientHeight || 200;
+
     if (!this.trace) {
-      this.ctx.fillStyle = '#111318';
-      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.save();
+      this.ctx.scale(dpr, dpr);
+      this.ctx.fillStyle = '#0e1117';
+      this.ctx.fillRect(0, 0, w, h);
       this.ctx.fillStyle = '#8e919a';
       this.ctx.font = '13px "Google Sans", "Roboto", sans-serif';
-      this.ctx.fillText('No simulation trace loaded. Click "Run Simulation" above to execute Wasm simulation.', 24, 40);
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(
+        'No simulation trace loaded. Click "Run Simulation" above to inspect live waveforms.',
+        w / 2,
+        Math.max(48, h / 2)
+      );
+      this.ctx.restore();
       return;
     }
 
-    const dpr = window.devicePixelRatio || 1;
-    const w = this.canvas.width / dpr;
-    const h = this.canvas.height / dpr;
     const rowHeight = 36;
     const headerHeight = 28;
 
@@ -142,14 +206,14 @@ export class WaveformViewer {
     this.ctx.scale(dpr, dpr);
 
     // Canvas Background (Material 3 Surface)
-    this.ctx.fillStyle = '#111318';
+    this.ctx.fillStyle = '#0e1117';
     this.ctx.fillRect(0, 0, w, h);
 
     // Update Sidebar Signal List & Values at cursor
     this.updateSidebar();
 
     // Draw Timeline Header Ticks
-    this.drawTimelineHeader(w, headerHeight);
+    this.drawTimelineHeader(w, headerHeight, h);
 
     // Draw Signal Waves
     let y = headerHeight;
@@ -162,7 +226,7 @@ export class WaveformViewer {
     // Draw Time Cursor
     if (this.cursorTime !== null) {
       const cursorX = this.panOffset + this.cursorTime * this.zoom;
-      this.ctx.strokeStyle = '#f2b8b5'; // M3 Error / Rose
+      this.ctx.strokeStyle = '#f2b8b5';
       this.ctx.lineWidth = 1.5;
       this.ctx.setLineDash([3, 3]);
       this.ctx.beginPath();
@@ -178,7 +242,7 @@ export class WaveformViewer {
     this.ctx.restore();
   }
 
-  private drawTimelineHeader(w: number, headerH: number): void {
+  private drawTimelineHeader(w: number, headerH: number, totalH: number): void {
     this.ctx.fillStyle = '#1a1d26';
     this.ctx.fillRect(0, 0, w, headerH);
     this.ctx.strokeStyle = '#44474f';
@@ -187,17 +251,27 @@ export class WaveformViewer {
     this.ctx.lineTo(w, headerH);
     this.ctx.stroke();
 
-    // Time Ticks
     if (!this.trace) return;
     const maxT = this.trace.maxTime || 100;
-    const tickStep = Math.max(5, Math.pow(10, Math.floor(Math.log10(maxT / 5))));
+    const rawStep = Math.max(5, Math.pow(10, Math.floor(Math.log10(maxT / 5))));
+    // Ensure ticks are never too dense on screen
+    const tickStep = rawStep * this.zoom < 40 ? rawStep * 2 : rawStep;
 
     this.ctx.fillStyle = '#8e919a';
     this.ctx.font = '10px "Roboto Mono", monospace';
+    this.ctx.textAlign = 'left';
 
     for (let t = 0; t <= maxT; t += tickStep) {
       const x = this.panOffset + t * this.zoom;
       if (x < 0 || x > w) continue;
+
+      // Subtle vertical grid guide
+      this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      this.ctx.beginPath();
+      this.ctx.moveTo(x, headerH);
+      this.ctx.lineTo(x, totalH);
+      this.ctx.stroke();
+
       this.ctx.beginPath();
       this.ctx.moveTo(x, headerH - 6);
       this.ctx.lineTo(x, headerH);
@@ -214,8 +288,7 @@ export class WaveformViewer {
     changes: { time: number; value: string }[],
     canvasW: number
   ): void {
-    // Row background separator
-    this.ctx.strokeStyle = '#20242f';
+    this.ctx.strokeStyle = '#1e232e';
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
     this.ctx.moveTo(0, y + rowH);
@@ -227,41 +300,30 @@ export class WaveformViewer {
     const midY = (highY + lowY) / 2;
 
     if (width === 1) {
-      // 1-bit Digital Square Wave (Material 3 Secondary: #7fcfff)
-      this.ctx.strokeStyle = '#7fcfff';
-      this.ctx.lineWidth = 2;
+      this.ctx.strokeStyle = '#6dd58c';
+      this.ctx.lineWidth = 1.8;
       this.ctx.beginPath();
 
-      let currentVal = '0';
       let prevX = this.panOffset;
       let prevY = lowY;
-
       this.ctx.moveTo(prevX, prevY);
 
       for (const ch of changes) {
         const nextX = this.panOffset + ch.time * this.zoom;
         const nextY = ch.value === '1' ? highY : lowY;
-
         this.ctx.lineTo(nextX, prevY);
         this.ctx.lineTo(nextX, nextY);
-
         prevX = nextX;
         prevY = nextY;
-        currentVal = ch.value;
       }
 
-      // Draw out to max time
       if (this.trace) {
         const endX = this.panOffset + this.trace.maxTime * this.zoom;
         this.ctx.lineTo(endX, prevY);
       }
       this.ctx.stroke();
     } else {
-      // Multi-bit Bus Transition Boxes (Material 3 Secondary Container)
-      this.ctx.strokeStyle = '#7fcfff';
-      this.ctx.fillStyle = '#004d67';
-      this.ctx.lineWidth = 1.5;
-
+      this.ctx.lineWidth = 1.4;
       let prevX = this.panOffset;
       let prevVal = '0';
 
@@ -270,7 +332,8 @@ export class WaveformViewer {
         const nextX = this.panOffset + ch.time * this.zoom;
 
         if (nextX > prevX + 2) {
-          // Draw bus transition box
+          this.ctx.strokeStyle = '#7fcfff';
+          this.ctx.fillStyle = '#004d67';
           this.ctx.beginPath();
           this.ctx.moveTo(prevX + 2, highY);
           this.ctx.lineTo(nextX - 2, highY);
@@ -282,12 +345,12 @@ export class WaveformViewer {
           this.ctx.fill();
           this.ctx.stroke();
 
-          // Value Text
           const formatted = formatSignalValue(prevVal, width, this.radix);
-          if (nextX - prevX > 28) {
+          if (nextX - prevX > 32) {
             this.ctx.fillStyle = '#c2e7ff';
             this.ctx.font = '10px "Roboto Mono", monospace';
-            this.ctx.fillText(formatted, prevX + 6, midY + 3);
+            this.ctx.textAlign = 'left';
+            this.ctx.fillText(formatted, prevX + 6, midY + 3.5);
           }
         }
 
@@ -295,10 +358,11 @@ export class WaveformViewer {
         prevVal = ch.value;
       }
 
-      // Trailing bus segment
       if (this.trace) {
         const endX = this.panOffset + this.trace.maxTime * this.zoom;
         if (endX > prevX) {
+          this.ctx.strokeStyle = '#7fcfff';
+          this.ctx.fillStyle = '#004d67';
           this.ctx.beginPath();
           this.ctx.moveTo(prevX + 2, highY);
           this.ctx.lineTo(endX, highY);
@@ -309,10 +373,13 @@ export class WaveformViewer {
           this.ctx.fill();
           this.ctx.stroke();
 
-          const formatted = formatSignalValue(prevVal, width, this.radix);
-          this.ctx.fillStyle = '#c2e7ff';
-          this.ctx.font = '10px "Roboto Mono", monospace';
-          this.ctx.fillText(formatted, prevX + 6, midY + 3);
+          if (endX - prevX > 32) {
+            const formatted = formatSignalValue(prevVal, width, this.radix);
+            this.ctx.fillStyle = '#c2e7ff';
+            this.ctx.font = '10px "Roboto Mono", monospace';
+            this.ctx.textAlign = 'left';
+            this.ctx.fillText(formatted, prevX + 6, midY + 3.5);
+          }
         }
       }
     }
@@ -324,7 +391,6 @@ export class WaveformViewer {
 
     let html = '<div class="wf-sidebar-header">Signal</div>';
     for (const sig of this.trace.signals) {
-      // Find value at current cursorTime
       let curVal = '0';
       const changes = this.trace.signalChanges.get(sig.name) || [];
       for (const ch of changes) {
